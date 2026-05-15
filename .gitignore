@@ -1,6 +1,21 @@
+# Dependencies
 node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Environment variables — never push real keys
 .env
-uploads/
-build/
+backend/.env
+
+# Uploaded files
+backend/uploads/
+
+# Build files
+frontend/build/
+
+# Mac system files
 .DS_Store
-*.zip
+
+# Logs
+*.log
+npm-debug.log*
