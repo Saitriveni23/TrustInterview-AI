@@ -1,0 +1,77 @@
+// ============================================================
+// middleware/zta-soar.js
+// ZTA LAYER 7 — Automation & Orchestration (SOAR)
+// Tracks anomalous behaviour per IP in real time.
+// Auto-blocks IPs that trigger too many errors or
+// too many 4xx responses (signs of probing / attack).
+// No human intervention required.
+// ============================================================
+
+const BLOCK_THRESHOLD_ERRORS = 20;   // too many 5xx in window
+const BLOCK_THRESHOLD_4XX    = 40;   // too many bad requests in window
+const WINDOW_MS              = 10 * 60 * 1000; // 10-minute rolling window
+const BLOCK_DURATION_MS      = 30 * 60 * 1000; // block for 30 minutes
+
+// ip → { errors, bad4xx, windowStart, blockedUntil }
+const ipThreatMap = new Map();
+
+function getThreatRecord(ip) {
+  const now = Date.now();
+  let record = ipThreatMap.get(ip);
+
+  if (!record || now - record.windowStart > WINDOW_MS) {
+    record = { errors: 0, bad4xx: 0, windowStart: now, blockedUntil: 0 };
+    ipThreatMap.set(ip, record);
+  }
+  return record;
+}
+
+function soarMiddleware(req, res, next) {
+  const ip     = req.ip;
+  const record = getThreatRecord(ip);
+
+  // 1 — Check if IP is currently auto-blocked
+  if (record.blockedUntil > Date.now()) {
+    const minutesLeft = Math.ceil((record.blockedUntil - Date.now()) / 60000);
+    console.warn(`[ZTA-L7] SOAR: Auto-blocked IP ${ip} — ${minutesLeft}m remaining`);
+    return res.status(429).json({
+      error: `ZTA-L7: IP temporarily blocked due to suspicious activity. Try again in ${minutesLeft} minutes.`,
+    });
+  }
+
+  // 2 — Intercept response to count bad status codes
+  const originalJson = res.json.bind(res);
+  res.json = function (body) {
+    const status = res.statusCode;
+
+    if (status >= 500) {
+      record.errors++;
+      if (record.errors >= BLOCK_THRESHOLD_ERRORS) {
+        record.blockedUntil = Date.now() + BLOCK_DURATION_MS;
+        console.error(`[ZTA-L7] SOAR: Auto-blocked ${ip} — exceeded server error threshold`);
+      }
+    } else if (status >= 400 && status < 500) {
+      record.bad4xx++;
+      if (record.bad4xx >= BLOCK_THRESHOLD_4XX) {
+        record.blockedUntil = Date.now() + BLOCK_DURATION_MS;
+        console.warn(`[ZTA-L7] SOAR: Auto-blocked ${ip} — exceeded 4xx probing threshold`);
+      }
+    }
+
+    return originalJson(body);
+  };
+
+  next();
+}
+
+// Cleanup old records every 15 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, r] of ipThreatMap) {
+    if (now - r.windowStart > WINDOW_MS && r.blockedUntil < now) {
+      ipThreatMap.delete(ip);
+    }
+  }
+}, 15 * 60 * 1000);
+
+module.exports = { soarMiddleware };

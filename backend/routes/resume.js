@@ -1,11 +1,16 @@
-const express    = require("express");
-const router     = express.Router();
-const multer     = require("multer");
-const pdfParse   = require("pdf-parse");
-const Tesseract  = require("tesseract.js");
-const fs         = require("fs");
-const path       = require("path");
+// ============================================================
+// routes/resume.js — ZTA L4 + L5 + L8
+// ============================================================
+
+const express      = require("express");
+const router       = express.Router();
+const multer       = require("multer");
+const pdfParse     = require("pdf-parse");
+const Tesseract    = require("tesseract.js");
+const fs           = require("fs");
+const path         = require("path");
 const { execSync } = require("child_process");
+const crypto       = require("crypto");
 
 const uploadFolder = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder, { recursive: true });
@@ -13,68 +18,73 @@ if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder, { recursive: true }
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadFolder),
-    filename:    (req, file, cb) => cb(null, `resume-${Date.now()}.pdf`),
+    filename: (req, file, cb) => {
+      const safeName = `resume-${crypto.randomBytes(8).toString("hex")}.pdf`;
+      cb(null, safeName);
+    },
   }),
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === "application/pdf") cb(null, true);
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (file.mimetype === "application/pdf" && ext === ".pdf") cb(null, true);
     else cb(new Error("Only PDF files allowed"), false);
   },
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// Try to extract text normally first
 async function extractTextFromPDF(filePath) {
   try {
     const buffer  = fs.readFileSync(filePath);
     const pdfData = await pdfParse(buffer);
     if (pdfData.text && pdfData.text.trim().length > 50) {
-      console.log("[Resume] Text extracted normally");
+      console.log("[Resume] Text extracted via pdf-parse");
       return pdfData.text.trim();
     }
   } catch (err) {
-    console.log("[Resume] Normal extraction failed, trying OCR...");
+    console.log("[Resume] pdf-parse failed — falling back to OCR");
   }
   return null;
 }
 
-// Convert PDF to image using pdftoppm (built into Mac)
 function convertPDFToImage(pdfPath) {
   const outputPath = pdfPath.replace(".pdf", "");
   try {
-    // Try using pdftoppm (available on Mac via homebrew or built-in)
     execSync(`pdftoppm -r 300 -l 1 "${pdfPath}" "${outputPath}"`, { timeout: 30000 });
-    // Find the generated image
-    const files = fs.readdirSync(path.dirname(pdfPath));
-    const imgFile = files.find(f => f.startsWith(path.basename(outputPath)) && (f.endsWith(".ppm") || f.endsWith(".png") || f.endsWith(".jpg")));
+    const files   = fs.readdirSync(path.dirname(pdfPath));
+    const imgFile = files.find(f =>
+      f.startsWith(path.basename(outputPath)) &&
+      (f.endsWith(".ppm") || f.endsWith(".png") || f.endsWith(".jpg"))
+    );
     if (imgFile) return path.join(path.dirname(pdfPath), imgFile);
-  } catch (err) {
-    console.log("[Resume] pdftoppm failed:", err.message);
-  }
-
-  // Try using sips (built into every Mac)
+  } catch (_) {}
   try {
     const imgPath = pdfPath.replace(".pdf", ".png");
     execSync(`sips -s format png "${pdfPath}" --out "${imgPath}"`, { timeout: 30000 });
     if (fs.existsSync(imgPath)) return imgPath;
-  } catch (err) {
-    console.log("[Resume] sips failed:", err.message);
-  }
-
+  } catch (_) {}
   return null;
 }
 
-// Run OCR on image
 async function runOCR(imagePath) {
-  console.log("[Resume] Running OCR on:", imagePath);
+  console.log("[Resume] Running OCR");
   const result = await Tesseract.recognize(imagePath, "eng", {
     logger: m => {
-      if (m.status === "recognizing text") {
-        process.stdout.write(`\r[OCR] Progress: ${Math.round(m.progress * 100)}%`);
-      }
+      if (m.status === "recognizing text")
+        process.stdout.write(`\r[OCR] ${Math.round(m.progress * 100)}%`);
     },
   });
-  console.log("\n[OCR] Complete");
+  console.log("\n[OCR] Done");
   return result.data.text;
+}
+
+function safeDelete(filePath) {
+  try {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`[ZTA-L5] File deleted: ${path.basename(filePath)}`);
+    }
+  } catch (err) {
+    console.error(`[ZTA-L5] Could not delete ${filePath}: ${err.message}`);
+  }
 }
 
 router.post("/upload", upload.single("resume"), async (req, res) => {
@@ -82,48 +92,36 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Please upload a PDF file." });
 
-    console.log(`[Resume] File received: ${req.file.filename}`);
+    console.log(`[Resume] Received: ${req.file.filename} (${req.file.size} bytes)`);
 
-    // Step 1 — Try normal text extraction
     let resumeText = await extractTextFromPDF(req.file.path);
 
-    // Step 2 — If no text found, use OCR
     if (!resumeText) {
-      console.log("[Resume] No text found — switching to OCR...");
-
-      // Convert PDF page to image
+      console.log("[Resume] No text found — switching to OCR");
       imagePath = convertPDFToImage(req.file.path);
-
       if (imagePath && fs.existsSync(imagePath)) {
         resumeText = await runOCR(imagePath);
-        // Clean up image file
-        fs.unlinkSync(imagePath);
+        safeDelete(imagePath);
         imagePath = null;
       } else {
-        // Last resort — run OCR directly on PDF
-        console.log("[Resume] Converting PDF directly with OCR...");
         const result = await Tesseract.recognize(req.file.path, "eng");
-        resumeText = result.data.text;
+        resumeText   = result.data.text;
       }
     }
 
-    // Delete the uploaded PDF
-    fs.unlinkSync(req.file.path);
+    safeDelete(req.file.path); // ZTA-L5: delete immediately
 
     if (!resumeText || resumeText.trim().length < 20) {
-      return res.status(400).json({
-        error: "Could not extract text from this PDF. Please try a clearer scan or a text-based PDF.",
-      });
+      return res.status(400).json({ error: "Could not extract text from this PDF. Please try a text-based PDF." });
     }
 
-    console.log(`[Resume] Successfully extracted ${resumeText.trim().length} characters`);
+    console.log(`[Resume] Extracted ${resumeText.trim().length} characters`);
     res.json({ success: true, resumeText: resumeText.trim() });
 
   } catch (err) {
     console.error("[Resume Error]", err.message);
-    // Cleanup
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    if (imagePath && fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+    safeDelete(req.file?.path);
+    safeDelete(imagePath);
     res.status(500).json({ error: "Failed to read the PDF. Please try again." });
   }
 });
