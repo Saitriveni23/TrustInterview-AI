@@ -36,11 +36,11 @@ async function extractTextFromPDF(filePath) {
     const buffer  = fs.readFileSync(filePath);
     const pdfData = await pdfParse(buffer);
     if (pdfData.text && pdfData.text.trim().length > 50) {
-      console.log("[Resume] Text extracted via pdf-parse");
+      console.log("[Resume] Text extracted via pdfparse - resume.js:39");
       return pdfData.text.trim();
     }
   } catch (err) {
-    console.log("[Resume] pdf-parse failed — falling back to OCR");
+    console.log("[Resume] pdfparse failed  falling back to OCR - resume.js:43");
   }
   return null;
 }
@@ -65,14 +65,14 @@ function convertPDFToImage(pdfPath) {
 }
 
 async function runOCR(imagePath) {
-  console.log("[Resume] Running OCR");
+  console.log("[Resume] Running OCR - resume.js:68");
   const result = await Tesseract.recognize(imagePath, "eng", {
     logger: m => {
       if (m.status === "recognizing text")
-        process.stdout.write(`\r[OCR] ${Math.round(m.progress * 100)}%`);
+        process.stdout.write(`\r[OCR] ${Math.round(m.progress * 100)}% - resume.js:72`);
     },
   });
-  console.log("\n[OCR] Done");
+  console.log("\n[OCR] Done - resume.js:75");
   return result.data.text;
 }
 
@@ -80,10 +80,10 @@ function safeDelete(filePath) {
   try {
     if (filePath && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
-      console.log(`[ZTA-L5] File deleted: ${path.basename(filePath)}`);
+      console.log(`[ZTAL5] File deleted: ${path.basename(filePath)} - resume.js:83`);
     }
   } catch (err) {
-    console.error(`[ZTA-L5] Could not delete ${filePath}: ${err.message}`);
+    console.error(`[ZTAL5] Could not delete ${filePath}: ${err.message} - resume.js:86`);
   }
 }
 
@@ -92,12 +92,12 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Please upload a PDF file." });
 
-    console.log(`[Resume] Received: ${req.file.filename} (${req.file.size} bytes)`);
+    console.log(`[Resume] Received: ${req.file.filename} (${req.file.size} bytes) - resume.js:95`);
 
     let resumeText = await extractTextFromPDF(req.file.path);
 
     if (!resumeText) {
-      console.log("[Resume] No text found — switching to OCR");
+      console.log("[Resume] No text found  switching to OCR - resume.js:100");
       imagePath = convertPDFToImage(req.file.path);
       if (imagePath && fs.existsSync(imagePath)) {
         resumeText = await runOCR(imagePath);
@@ -115,11 +115,11 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
       return res.status(400).json({ error: "Could not extract text from this PDF. Please try a text-based PDF." });
     }
 
-    console.log(`[Resume] Extracted ${resumeText.trim().length} characters`);
+    console.log(`[Resume] Extracted ${resumeText.trim().length} characters - resume.js:118`);
     res.json({ success: true, resumeText: resumeText.trim() });
 
   } catch (err) {
-    console.error("[Resume Error]", err.message);
+    console.error("[Resume Error] - resume.js:122", err.message);
     safeDelete(req.file?.path);
     safeDelete(imagePath);
     res.status(500).json({ error: "Failed to read the PDF. Please try again." });
