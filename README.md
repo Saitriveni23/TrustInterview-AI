@@ -20,7 +20,6 @@ AI-powered interview bot that reads your resume and asks personalised, bias-free
 ### Backend
 cd backend
 npm install
-Create .env file: GEMINI_API_KEY=your_key_here
 node server.js
 
 ### Frontend
