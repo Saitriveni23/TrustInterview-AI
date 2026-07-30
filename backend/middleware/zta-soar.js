@@ -28,6 +28,9 @@ function getThreatRecord(ip) {
 
 function soarMiddleware(req, res, next) {
   const ip     = req.ip;
+  if (ip === "::1" || ip === "127.0.0.1" || ip.endsWith("127.0.0.1")) {
+    return next();
+  }
   const record = getThreatRecord(ip);
 
   // 1 — Check if IP is currently auto-blocked
@@ -65,6 +68,9 @@ function soarMiddleware(req, res, next) {
 }
 
 function getThreatLevel(ip) {
+  if (ip === "::1" || ip === "127.0.0.1" || ip.endsWith("127.0.0.1")) {
+    return { level: "low", details: [] };
+  }
   const record = ipThreatMap.get(ip);
   if (!record) return { level: "low", details: [] };
   const details = [];

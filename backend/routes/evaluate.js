@@ -109,9 +109,15 @@ Skill being tested: ${(skill || "General").substring(0, 100)}
 Question: "${question.trim()}"
 Candidate Answer: "${answer.trim()}"
 
-Score 0 to 10 based ONLY on technical merit and communication quality.
-IMPORTANT: Never address the candidate by name. Never comment on personal characteristics.
-Give 2 specific strengths and 2 specific improvements.
+Candidate Resume Reference:
+"${(resumeText || "No resume text provided").substring(0, 3000)}"
+
+SCORING & EVALUATION GUIDELINES:
+- Score 0 to 10 based ONLY on technical merit, communication quality, and consistency with their resume.
+- Cross-reference the candidate's answer with the provided Resume Reference.
+- Verify that the skills, technologies, or achievements claimed in their answer match or align with their documented background in the resume. If there are contradictions or ungrounded claims, reflect this in the score and explain it under improvements.
+- IMPORTANT: Never address the candidate by name. Never comment on personal characteristics.
+- Give 2 specific strengths and 2 specific improvements.
 
 Respond ONLY with valid JSON. No markdown:
 {"score":7,"grade":"Good","summary":"one sentence summary","strengths":["strength 1","strength 2"],"improvements":["improvement 1","improvement 2"],"idealAnswer":"brief ideal answer"}`;

@@ -215,7 +215,7 @@ export default function Interview() {
     try {
       const res = await axios.post(
         `${BACKEND}/api/evaluate/answer`,
-        { question: q.question, answer: finalAnswer, questionType: q.type, skill: q.skill, jobRole },
+        { question: q.question, answer: finalAnswer, questionType: q.type, skill: q.skill, jobRole, resumeText },
         { headers: ztaHeaders({ "Content-Type": "application/json" }) }
       );
       result = { ...result, ...res.data };
