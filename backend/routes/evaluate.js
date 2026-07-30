@@ -1,8 +1,21 @@
 const express = require("express");
 const router  = express.Router();
 const OpenAI  = require("openai");
+const axios   = require("axios");
+const { checkCandidateAnswerHallucination } = require("../utils/hallucination-checker");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+async function askGemini(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const response = await axios.post(url, {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json"
+    }
+  }, { timeout: 30000 });
+  return response.data.candidates[0].content.parts[0].text;
+}
 
 const BASE_BIAS_CATEGORIES = [
   { name: "Age Discrimination",        words: ["age", "how old", "young", "old", "years old"] },
@@ -87,7 +100,7 @@ router.post("/answer", async (req, res) => {
     const validationError = validateAnswerRequest(req.body);
     if (validationError) return res.status(400).json({ error: validationError });
 
-    const { question, answer, skill, jobRole, candidateName } = req.body;
+    const { question, answer, skill, jobRole, candidateName, resumeText } = req.body;
     const biasChecker = buildBiasChecker(candidateName);
 
     const prompt = `You are a fair, unbiased interview evaluator.
@@ -103,13 +116,24 @@ Give 2 specific strengths and 2 specific improvements.
 Respond ONLY with valid JSON. No markdown:
 {"score":7,"grade":"Good","summary":"one sentence summary","strengths":["strength 1","strength 2"],"improvements":["improvement 1","improvement 2"],"idealAnswer":"brief ideal answer"}`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo", messages: [{ role: "user", content: prompt }],
-      temperature: 0.4, max_tokens: 600,
-    });
+    let raw;
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo", messages: [{ role: "user", content: prompt }],
+        temperature: 0.4, max_tokens: 600,
+      });
+      raw = response.choices[0].message.content.trim();
+    } catch (openAiError) {
+      console.warn("[Evaluate] OpenAI failed, trying Gemini fallback:", openAiError.message);
+      if (process.env.GEMINI_API_KEY) {
+        raw = await askGemini(prompt);
+      } else {
+        throw openAiError;
+      }
+    }
 
-    const raw        = response.choices[0].message.content.trim().replace(/```json|```/g, "");
-    const evaluation = JSON.parse(raw);
+    const cleaned    = raw.replace(/```json|```/g, "").trim();
+    const evaluation = JSON.parse(cleaned);
     const score      = Math.min(10, Math.max(0, Number(evaluation.score) || 0));
     const grade      = score>=9?"Exceptional":score>=7?"Good":score>=5?"Average":score>=3?"Weak":"Poor";
 
@@ -126,13 +150,18 @@ Respond ONLY with valid JSON. No markdown:
       console.log(`[ZTA-L12] [${biasResult.filterName}] All ${biasResult.totalCategories} categories passed — Score: ${biasResult.complianceScore}%`);
     }
 
+    // ZTA Layer 13: Hallucination & Fact Verification
+    const hallucinationResult = checkCandidateAnswerHallucination(answer, question, resumeText);
+    console.log(`[ZTA-L13] [${hallucinationResult.filterName}] Risk Score: ${hallucinationResult.hallucinationRiskScore}% (${hallucinationResult.truthfulnessGrade})`);
+
     res.json({
       success: true, score, grade,
-      summary:      evaluation.summary      || "",
-      strengths:    evaluation.strengths    || [],
-      improvements: evaluation.improvements || [],
-      idealAnswer:  evaluation.idealAnswer  || "",
-      biasCheck:    biasResult,
+      summary:            evaluation.summary      || "",
+      strengths:          evaluation.strengths    || [],
+      improvements:       evaluation.improvements || [],
+      idealAnswer:        evaluation.idealAnswer  || "",
+      biasCheck:          biasResult,
+      hallucinationCheck: hallucinationResult,
     });
 
   } catch (err) {
@@ -175,13 +204,31 @@ Write a fair final evaluation. IMPORTANT: Never mention the candidate by name.
 Respond ONLY with valid JSON. No markdown:
 {"overallSummary":"2-3 sentence summary","strongSkills":["skill1","skill2"],"weakSkills":["skill1"],"recommendation":"Hire","recommendationReason":"one sentence reason","nextSteps":"one sentence advice"}`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo", messages: [{ role: "user", content: prompt }],
-      temperature: 0.4, max_tokens: 500,
-    });
+    let raw;
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo", messages: [{ role: "user", content: prompt }],
+        temperature: 0.4, max_tokens: 500,
+      });
+      raw = response.choices[0].message.content.trim();
+    } catch (openAiError) {
+      console.warn("[Final Report] OpenAI failed, trying Gemini fallback:", openAiError.message);
+      if (process.env.GEMINI_API_KEY) {
+        raw = await askGemini(prompt);
+      } else {
+        throw openAiError;
+      }
+    }
 
-    const raw    = response.choices[0].message.content.trim().replace(/```json|```/g, "");
-    const report = JSON.parse(raw);
+    const cleaned = raw.replace(/```json|```/g, "").trim();
+    const report  = JSON.parse(cleaned);
+
+    const allHallucinationResults = results.map(r => r.hallucinationCheck).filter(Boolean);
+    const avgHallucinationRisk    = allHallucinationResults.length > 0
+      ? Math.round(allHallucinationResults.reduce((s, h) => s + (h.hallucinationRiskScore || 0), 0) / allHallucinationResults.length)
+      : 0;
+    const totalHallucinationsFlagged = allHallucinationResults.reduce((s, h) => s + ((h.flaggedHallucinations || []).length), 0);
+    const overallTruthfulnessGrade   = avgHallucinationRisk < 20 ? "Verified Factual" : avgHallucinationRisk < 50 ? "Mostly Grounded" : "High Hallucination Risk";
 
     res.json({
       success: true, overallScore, overallGrade, ...report,
@@ -195,6 +242,21 @@ Respond ONLY with valid JSON. No markdown:
         categoriesMonitored:       12 + (candidateName ? 1 : 0),
         nameProtectionActive:      !!candidateName,
       },
+      hallucinationSummary: {
+        filterName:                "ZTA-L13 Anti-Hallucination & Factuality Filter",
+        avgHallucinationRisk,
+        totalFlags:                totalHallucinationsFlagged,
+        truthfulnessGrade:         overallTruthfulnessGrade,
+        status:                    totalHallucinationsFlagged === 0 ? "VERIFIED FACTUAL" : "UNVERIFIED CLAIMS DETECTED",
+        questionBreakdown:         results.map((r, i) => ({
+          questionIndex: i + 1,
+          skill: r.skill || "General",
+          hallucinationRiskScore: r.hallucinationCheck?.hallucinationRiskScore || 0,
+          truthfulnessGrade: r.hallucinationCheck?.truthfulnessGrade || "Verified Factual",
+          flaggedCount: (r.hallucinationCheck?.flaggedHallucinations || []).length,
+          flagged: r.hallucinationCheck?.flaggedHallucinations || []
+        }))
+      }
     });
 
   } catch (err) {

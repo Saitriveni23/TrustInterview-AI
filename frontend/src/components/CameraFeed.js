@@ -1,42 +1,165 @@
 import React, { useRef, useEffect, useState } from "react";
+
 export default function CameraFeed({ candidateName, recording }) {
   const videoRef = useRef(null);
   const [camOn, setCamOn] = useState(false);
   const [camErr, setCamErr] = useState("");
+
   useEffect(() => {
     async function start() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        if (videoRef.current) { videoRef.current.srcObject = stream; setCamOn(true); }
-      } catch { setCamErr("Camera access denied. Please allow camera in browser settings."); }
+        if (videoRef.current) { 
+          videoRef.current.srcObject = stream; 
+          setCamOn(true); 
+        }
+      } catch { 
+        setCamErr("Camera access denied. Please allow camera in browser settings."); 
+      }
     }
     start();
-    return () => { if (videoRef.current?.srcObject) videoRef.current.srcObject.getTracks().forEach(t=>t.stop()); };
+    return () => { 
+      if (videoRef.current?.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      }
+    };
   }, []);
+
   return (
-    <div style={{background:"#161628",border:"1px solid #252545",borderRadius:16,overflow:"hidden"}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#111122",borderBottom:"1px solid #1e1e3a"}}>
-        <span style={{fontSize:13,fontWeight:600,color:"#fff",flex:1}}>📷 Camera Feed</span>
-        <span style={{width:8,height:8,borderRadius:"50%",background:camOn?"#22c55e":"#f87171",display:"inline-block"}}/>
-        <span style={{fontSize:11,color:"#8888aa"}}>{camOn?"Live":"Off"}</span>
+    <div className="glass-card" style={s.card}>
+      <div style={s.header}>
+        <span style={s.title}>📷 LIVE CAMERA STREAM</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ 
+            width: 8, 
+            height: 8, 
+            borderRadius: "50%", 
+            background: camOn ? "var(--color-success)" : "var(--color-error)",
+            boxShadow: camOn ? "var(--shadow-success-glow)" : "var(--shadow-error-glow)"
+          }}/>
+          <span style={s.statusText}>{camOn ? "ONLINE" : "OFFLINE"}</span>
+        </div>
       </div>
-      <div style={{position:"relative",background:"#0b0b18",aspectRatio:"4/3",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+      
+      <div style={s.videoContainer}>
         {camErr ? (
-          <div style={{textAlign:"center",padding:24}}>
-            <div style={{fontSize:40,marginBottom:12}}>📷</div>
-            <div style={{fontSize:13,color:"#f87171",lineHeight:1.6}}>{camErr}</div>
+          <div style={s.errorContainer}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>📹</div>
+            <div style={{ fontSize: 13, color: "var(--color-error)", fontWeight: 500, lineHeight: 1.6 }}>
+              {camErr}
+            </div>
           </div>
         ) : (
           <>
-            <video ref={videoRef} autoPlay muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",transform:"scaleX(-1)",display:"block"}}/>
-            {recording && <div style={{position:"absolute",top:10,left:10,background:"rgba(220,38,38,.85)",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>● REC</div>}
-            <div style={{position:"absolute",bottom:10,left:10,background:"rgba(0,0,0,.65)",color:"#fff",fontSize:12,padding:"4px 12px",borderRadius:20}}>👤 {candidateName}</div>
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              muted 
+              playsInline 
+              style={s.video}
+            />
+            {recording && (
+              <div style={s.recBadge} className="pulse-indicator">
+                ● REC
+              </div>
+            )}
+            <div style={s.nameBadge}>
+              👤 {candidateName}
+            </div>
           </>
         )}
       </div>
-      <div style={{display:"flex",justifyContent:"space-around",padding:"8px 14px",background:"#111122",borderTop:"1px solid #1e1e3a",fontSize:11,color:"#555570"}}>
-        <span>💡 Look at the camera</span><span>�� Quiet environment</span>
+      
+      <div style={s.footer}>
+        <span>💡 Look directly at the camera</span>
+        <span>🎙️ Ensure a quiet environment</span>
       </div>
     </div>
   );
 }
+
+const s = {
+  card: {
+    overflow: "hidden",
+    background: "rgba(17, 24, 39, 0.45)",
+    border: "1px solid rgba(255, 255, 255, 0.08)",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "12px 16px",
+    background: "rgba(255, 255, 255, 0.02)",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+  },
+  title: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#9ca3af",
+    letterSpacing: "0.05em",
+    fontFamily: "var(--font-headings)",
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#e5e7eb",
+    fontFamily: "var(--font-headings)",
+  },
+  videoContainer: {
+    position: "relative",
+    background: "rgba(3, 7, 18, 0.6)",
+    aspectRatio: "16/9",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  video: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    transform: "scaleX(-1)",
+    display: "block",
+  },
+  errorContainer: {
+    textAlign: "center",
+    padding: 32,
+    maxWidth: 320,
+  },
+  recBadge: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    background: "rgba(244, 63, 94, 0.85)",
+    border: "1px solid rgba(244, 63, 94, 0.4)",
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: 700,
+    padding: "3px 8px",
+    borderRadius: 6,
+    letterSpacing: "0.02em",
+  },
+  nameBadge: {
+    position: "absolute",
+    bottom: 14,
+    left: 14,
+    background: "rgba(3, 7, 18, 0.75)",
+    border: "1px solid rgba(255, 255, 255, 0.08)",
+    backdropFilter: "blur(4px)",
+    color: "#f3f4f6",
+    fontSize: 12,
+    fontWeight: 500,
+    padding: "4px 12px",
+    borderRadius: 8,
+  },
+  footer: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "10px 16px",
+    background: "rgba(255, 255, 255, 0.01)",
+    borderTop: "1px solid rgba(255, 255, 255, 0.04)",
+    fontSize: 11,
+    color: "#6b7280",
+    fontWeight: 500,
+  },
+};

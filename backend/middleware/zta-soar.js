@@ -64,6 +64,22 @@ function soarMiddleware(req, res, next) {
   next();
 }
 
+function getThreatLevel(ip) {
+  const record = ipThreatMap.get(ip);
+  if (!record) return { level: "low", details: [] };
+  const details = [];
+  if (record.blockedUntil > Date.now()) details.push("AUTO_BLOCKED");
+  if (record.bad4xx > 0) details.push(`SUSPICIOUS_REQUESTS (${record.bad4xx})`);
+  if (record.errors > 0) details.push(`SERVER_ERRORS (${record.errors})`);
+  
+  let level = "low";
+  if (record.blockedUntil > Date.now()) level = "critical";
+  else if (record.bad4xx >= 3) level = "high";
+  else if (record.bad4xx > 0) level = "medium";
+
+  return { level, details, bad4xx: record.bad4xx, blockedUntil: record.blockedUntil };
+}
+
 // Cleanup old records every 15 minutes
 setInterval(() => {
   const now = Date.now();
@@ -74,4 +90,4 @@ setInterval(() => {
   }
 }, 15 * 60 * 1000);
 
-module.exports = { soarMiddleware };
+module.exports = { soarMiddleware, getThreatLevel };

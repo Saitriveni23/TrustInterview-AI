@@ -12,7 +12,7 @@ const crypto = require("crypto");
 const activeSessions = new Map();
 
 // Paths that don't need a session token yet (bootstrap flow)
-const PUBLIC_PATHS = ["/api/health", "/api/auth/session"];
+const PUBLIC_PATHS = ["/api/health", "/api/auth/session", "/api/zta-status"];
 
 /**
  * generateSession()
@@ -32,9 +32,11 @@ function generateSession() {
  * Enforces: every non-public route must present a valid Bearer token.
  */
 function identityMiddleware(req, res, next) {
+  console.log("[DEBUG ZTA-L1] checking path:", req.path, "PUBLIC_PATHS contains:", PUBLIC_PATHS.includes(req.path));
   if (PUBLIC_PATHS.includes(req.path)) return next();
 
   const authHeader = req.headers["authorization"] || "";
+  console.log("[DEBUG ZTA-L1] AuthHeader:", authHeader, "ActiveSessions:", Array.from(activeSessions.keys()));
   if (!authHeader.startsWith("Bearer ")) {
     return res.status(401).json({
       error: "ZTA-L1: No session token. Call POST /api/auth/session first.",

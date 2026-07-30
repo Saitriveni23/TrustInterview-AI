@@ -4,9 +4,21 @@ const multer  = require("multer");
 const fs      = require("fs");
 const path    = require("path");
 const axios   = require("axios");
+const { auditAIQuestionsGrounding } = require("../utils/hallucination-checker");
 
 const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
 const MODEL      = "llama3.2:1b";
+
+async function askGemini(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const response = await axios.post(url, {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json"
+    }
+  }, { timeout: 30000 });
+  return response.data.candidates[0].content.parts[0].text;
+}
 
 const audioFolder = path.join(__dirname, "../uploads/audio");
 if (!fs.existsSync(audioFolder)) fs.mkdirSync(audioFolder, { recursive: true });
@@ -62,11 +74,24 @@ YOU MUST respond with ONLY a JSON array. No explanation. No markdown. No text be
 Example:
 [{"id":1,"question":"Can you explain how you used React hooks?","type":"technical","skill":"React","timeLimit":90},{"id":2,"question":"Tell me about a time you solved a difficult bug","type":"behavioural","skill":"Problem Solving","timeLimit":120}]`;
 
-    const raw = await askOllama(prompt);
-    console.log("[Ollama] Raw response:", raw.substring(0, 200));
+    let raw;
+    try {
+      raw = await askOllama(prompt);
+      console.log("[Ollama] Raw response:", raw.substring(0, 200));
+    } catch (ollamaErr) {
+      console.warn("[Interview] Ollama failed, trying Gemini fallback:", ollamaErr.message);
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          raw = await askGemini(prompt);
+          console.log("[Gemini] Generated questions successfully");
+        } catch (geminiErr) {
+          console.error("[Interview] Gemini fallback failed:", geminiErr.message);
+        }
+      }
+    }
 
     // Extract JSON array from response
-    const jsonMatch = raw.match(/\[[\s\S]*?\]/);
+    const jsonMatch = raw ? raw.match(/\[[\s\S]*?\]/) : null;
     if (!jsonMatch) {
       console.error("[Ollama] No JSON array found in response");
       // Return fallback questions based on job role
@@ -79,13 +104,15 @@ Example:
         {"id":6,"question":"How do you approach debugging a complex problem?","type":"technical","skill":"Debugging","timeLimit":90},
         {"id":7,"question":"What would you do if you were given an unclear requirement?","type":"situational","skill":"Communication","timeLimit":120},
       ];
-      return res.json({ success: true, questions: fallback });
+      return res.json({ success: true, questions: fallback, groundingAudit: auditAIQuestionsGrounding(fallback, resumeText) });
     }
 
-    const questions = JSON.parse(jsonMatch[0]);
-    const clean     = questions.filter(q => biasCheck(q.question).passed);
-    console.log(`[Interview] ${clean.length} questions ready`);
-    res.json({ success: true, questions: clean });
+    const questions      = JSON.parse(jsonMatch[0]);
+    const clean          = questions.filter(q => biasCheck(q.question).passed);
+    const groundingAudit = auditAIQuestionsGrounding(clean, resumeText);
+
+    console.log(`[Interview] ${clean.length} questions ready — ZTA-L13 Grounding Passed: ${groundingAudit.passed}`);
+    res.json({ success: true, questions: clean, groundingAudit });
 
   } catch (err) {
     console.error("[Interview Error]", err.message);
