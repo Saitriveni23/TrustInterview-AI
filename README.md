@@ -82,7 +82,9 @@ This system implements a strict default-deny policy across 13 layers:
 13. **Hallucination Checker**: Factuality verification against resume.
 
 ## 🧑‍💻 Author
-**Triveni Reddy** - [github.com/triveni030208-cpu](https://github.com/triveni030208-cpu)
-
+**Sai Triveni B ** - [github.com/saitriveni23-cpu](https://github.com/saitriveni23-cpu)
+** Sai Pranavi A P** -[github.com/saipranavi247-prog]
+** Sanjana H V **-[github.com/sanjanahv]
+** Sneha v **-[github.com/Snehav-unique]
 ---
 *Refer to the included `TrustInterview_ZTA_Architecture_Report.pdf` for an in-depth security analysis.*
