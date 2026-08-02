@@ -65,7 +65,7 @@ if (ZTA_ON) {
 
 if (ZTA_ON) {
   app.use(rateLimit({
-    windowMs: 15 * 60 * 1000, max: 100,
+    windowMs: 15 * 60 * 1000, max: 5000,
     message: { error: "ZTA-L3: Too many requests." },
     standardHeaders: true, legacyHeaders: false,
   }));
@@ -74,7 +74,7 @@ if (ZTA_ON) {
 }
 
 const authLimiter = ZTA_ON
-  ? rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: "ZTA-L3: Too many auth requests." }, standardHeaders: true, legacyHeaders: false })
+  ? rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, message: { error: "ZTA-L3: Too many auth requests." }, standardHeaders: true, legacyHeaders: false })
   : (req, res, next) => next();
 
 if (ZTA_ON) {

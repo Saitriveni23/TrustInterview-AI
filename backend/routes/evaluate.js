@@ -144,8 +144,12 @@ Respond ONLY with valid JSON. No markdown:
     const grade      = score>=9?"Exceptional":score>=7?"Good":score>=5?"Average":score>=3?"Weak":"Poor";
 
     const allText = [
-      evaluation.summary, evaluation.idealAnswer,
-      ...(evaluation.strengths || []), ...(evaluation.improvements || []),
+      question,
+      answer,
+      evaluation.summary,
+      evaluation.idealAnswer,
+      ...(evaluation.strengths || []),
+      ...(evaluation.improvements || []),
     ].join(" ");
 
     const biasResult = biasChecker.check(allText);
@@ -157,7 +161,7 @@ Respond ONLY with valid JSON. No markdown:
     }
 
     // ZTA Layer 13: Hallucination & Fact Verification
-    const hallucinationResult = checkCandidateAnswerHallucination(answer, question, resumeText);
+    const hallucinationResult = checkCandidateAnswerHallucination(answer, question, resumeText, req.body.hallucinationTypes);
     console.log(`[ZTA-L13] [${hallucinationResult.filterName}] Risk Score: ${hallucinationResult.hallucinationRiskScore}% (${hallucinationResult.truthfulnessGrade})`);
 
     res.json({

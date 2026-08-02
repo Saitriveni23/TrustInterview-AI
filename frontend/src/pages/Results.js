@@ -11,6 +11,7 @@ export default function Results() {
   const navigate = useNavigate();
   const raw = sessionStorage.getItem("interviewResults");
   const data = raw ? JSON.parse(raw) : null;
+  const companyName = sessionStorage.getItem("companyName") || "";
   const [tab, setTab] = useState(0);
 
   if (!data) {
@@ -30,6 +31,7 @@ export default function Results() {
 
   const { answers, report, jobRole, candidateName } = data;
   const safe = Array.isArray(answers) ? answers : [];
+  const interviewType = sessionStorage.getItem("interviewType") || "mock";
   const avg = safe.length ? (safe.reduce((s, a) => s + (a.score || 0), 0) / safe.length).toFixed(1) : 0;
   
   const grade = avg >= 9 ? "Exceptional" : avg >= 7 ? "Good" : avg >= 5 ? "Average" : avg >= 3 ? "Weak" : "Poor";
@@ -50,13 +52,91 @@ export default function Results() {
     <div style={s.page}>
       {/* Top Navbar */}
       <header style={s.navbar} className="glass-card">
-        <span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: "var(--font-headings)" }}>TrustInterview AI</span>
+        <span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: "var(--font-headings)" }}>
+          {companyName ? `${companyName} Assessments` : "TrustInterview AI"}
+        </span>
         <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 600, fontFamily: "var(--font-headings)" }}>
           CANDIDATE REPORT: {candidateName.toUpperCase()}
         </span>
       </header>
 
       <div style={s.mainContainer} className="fade-in-up">
+        {/* Verification banner based on Interview Type */}
+        {interviewType === "actual" ? (
+          <div style={{
+            background: "linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(99, 102, 241, 0.15))",
+            border: "1px solid rgba(16, 185, 129, 0.3)",
+            padding: "16px 24px",
+            borderRadius: "12px",
+            marginBottom: "24px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "24px" }}>🎓</span>
+              <div>
+                <div style={{ color: "#ffffff", fontWeight: 800, fontSize: "14px", fontFamily: "var(--font-headings)" }}>
+                  OFFICIAL RVCE PLACEMENTS CELL ASSESSMENT
+                </div>
+                <div style={{ color: "var(--text-muted)", fontSize: "11.5px", marginTop: "2px" }}>
+                  This result has been verified under Zero Trust protocols and logged for recruitment review.
+                </div>
+              </div>
+            </div>
+            <span style={{
+              background: "rgba(16, 185, 129, 0.2)",
+              color: "#10b981",
+              border: "1px solid #10b981",
+              padding: "4px 10px",
+              borderRadius: "20px",
+              fontSize: "11px",
+              fontWeight: 800,
+              letterSpacing: "0.05em"
+            }}>
+              PLACEMENTS VERIFIED
+            </span>
+          </div>
+        ) : (
+          <div style={{
+            background: "rgba(255, 255, 255, 0.02)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            padding: "16px 24px",
+            borderRadius: "12px",
+            marginBottom: "24px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "24px" }}>🧪</span>
+              <div>
+                <div style={{ color: "#ffffff", fontWeight: 800, fontSize: "14px", fontFamily: "var(--font-headings)" }}>
+                  PRACTICE MOCK INTERVIEW SANDBOX
+                </div>
+                <div style={{ color: "var(--text-muted)", fontSize: "11.5px", marginTop: "2px" }}>
+                  This is a practice dashboard. Results are private and not shared with the placements office.
+                </div>
+              </div>
+            </div>
+            <span style={{
+              background: "rgba(255, 255, 255, 0.05)",
+              color: "#cbd5e1",
+              border: "1px solid rgba(255,255,255,0.1)",
+              padding: "4px 10px",
+              borderRadius: "20px",
+              fontSize: "11px",
+              fontWeight: 800,
+              letterSpacing: "0.05em"
+            }}>
+              PRACTICE SANDBOX
+            </span>
+          </div>
+        )}
         {/* Top Summary Card (Overall performance) */}
         <div className="glass-card" style={s.topSummaryCard}>
           <div style={{ flex: 1 }}>
@@ -108,6 +188,81 @@ export default function Results() {
             {report.recommendationReason && (
               <div style={s.metaNote}>
                 <strong>Rationale:</strong> {report.recommendationReason}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ZTA Layer 12: Demographic Fairness & Bias Shield */}
+        {report?.biasSummary && (
+          <div 
+            className="glass-card" 
+            style={{ 
+              ...s.card, 
+              borderColor: "rgba(16, 185, 129, 0.3)",
+              background: "rgba(16, 185, 129, 0.03)",
+              marginBottom: "20px"
+            }}
+          >
+            <div style={s.cardHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 20 }}>🛡️</span>
+                <span style={{ ...s.cardTitle, color: "var(--color-success)" }}>ZTA-L12: Demographic Fairness & Bias Shield</span>
+              </div>
+              <span 
+                className="badge"
+                style={{
+                  color: "var(--color-success)",
+                  background: "rgba(3, 7, 18, 0.5)",
+                  borderColor: "rgba(16, 185, 129, 0.3)",
+                  border: "1px solid",
+                  padding: "4px 10px",
+                  fontSize: 11
+                }}
+              >
+                {report.biasSummary.status}
+              </span>
+            </div>
+
+            <div style={s.auditGrid}>
+              <div style={s.auditBox}>
+                <div style={s.auditBoxTitle}>Fairness Compliance Score</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "var(--color-success)", fontFamily: "var(--font-headings)" }}>
+                  {report.biasSummary.overallCompliance}% Clean
+                </div>
+                <div style={s.barTrack}>
+                  <div 
+                    style={{ 
+                      ...s.barFill, 
+                      width: `${report.biasSummary.overallCompliance}%`, 
+                      background: "var(--color-success)"
+                    }} 
+                  />
+                </div>
+              </div>
+
+              <div style={s.auditBox}>
+                <div style={s.auditBoxTitle}>Identity Bias Exposure</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: report.biasSummary.totalFlagsAcrossInterview > 0 ? "var(--color-warning)" : "#94a3b8", fontFamily: "var(--font-headings)" }}>
+                  {100 - report.biasSummary.overallCompliance}% Bias
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+                  Total Flagged Identity Terms: <strong style={{ color: report.biasSummary.totalFlagsAcrossInterview > 0 ? "var(--color-warning)" : "var(--color-success)" }}>{report.biasSummary.totalFlagsAcrossInterview}</strong>
+                </div>
+              </div>
+            </div>
+
+            {Object.keys(report.biasSummary.triggeredCategories || {}).length > 0 && (
+              <div style={{ marginTop: "14px" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#e5e7eb", marginBottom: 10, fontFamily: "var(--font-headings)" }}>FLAGGED DEVIATIONS DETECTED:</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {Object.entries(report.biasSummary.triggeredCategories).map(([cat, count], idx) => (
+                    <div key={idx} style={s.auditItem}>
+                      <span style={{ color: "#ffffff", fontWeight: 600 }}>{cat}</span>
+                      <span className="badge badge-warning" style={{ fontSize: 11 }}>{count} flag(s) in evaluation logs</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

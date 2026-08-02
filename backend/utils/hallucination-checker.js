@@ -55,7 +55,7 @@ function extractTechTerms(text) {
  * Checks a candidate's answer for hallucinated technology claims, impossible metrics,
  * and cross-verifies against the candidate's resume (if provided).
  */
-function checkCandidateAnswerHallucination(answer, question = "", resumeText = "") {
+function checkCandidateAnswerHallucination(answer, question = "", resumeText = "", hallucinationTypes = { cv: true, context: true, facts: true }) {
   const text = (answer || "").trim();
   const flagged = [];
   const verified = [];
@@ -75,51 +75,57 @@ function checkCandidateAnswerHallucination(answer, question = "", resumeText = "
   }
 
   // 1. Check for impossible technical patterns (Fake versions, contradictory jargon)
-  for (const item of IMPOSSIBLE_TECH_PATTERNS) {
-    if (item.pattern.test(text)) {
-      const match = text.match(item.pattern);
-      flagged.push({
-        type: "Impossible Jargon / Version Anomaly",
-        term: match ? match[0] : "Anomalous term",
-        reason: item.reason,
-        severity: "HIGH"
-      });
+  if (hallucinationTypes.facts !== false) {
+    for (const item of IMPOSSIBLE_TECH_PATTERNS) {
+      if (item.pattern.test(text)) {
+        const match = text.match(item.pattern);
+        flagged.push({
+          type: "Impossible Jargon / Version Anomaly",
+          term: match ? match[0] : "Anomalous term",
+          reason: item.reason,
+          severity: "HIGH"
+        });
+      }
     }
   }
 
   // 2. Check for impossible metric claims
-  for (const item of IMPOSSIBLE_METRIC_PATTERNS) {
-    if (item.pattern.test(text)) {
-      const match = text.match(item.pattern);
-      flagged.push({
-        type: "Impossible Metric Claim",
-        term: match ? match[0] : "Anomalous metric",
-        reason: item.reason,
-        severity: "HIGH"
-      });
+  if (hallucinationTypes.context !== false) {
+    for (const item of IMPOSSIBLE_METRIC_PATTERNS) {
+      if (item.pattern.test(text)) {
+        const match = text.match(item.pattern);
+        flagged.push({
+          type: "Impossible Metric Claim",
+          term: match ? match[0] : "Anomalous metric",
+          reason: item.reason,
+          severity: "HIGH"
+        });
+      }
     }
   }
 
   // 3. Entity extraction & Resume Grounding Check
   const answerTechTerms = extractTechTerms(text);
   const resumeTechTerms = extractTechTerms(resumeText);
-
   let unverifiedResumeClaims = 0;
-  if (answerTechTerms.length > 0) {
-    answerTechTerms.forEach(term => {
-      const existsInResume = resumeTechTerms.includes(term) || !resumeText;
-      if (existsInResume) {
-        verified.push({ term, source: resumeText ? "Grounded in Resume" : "Standard Domain Tech" });
-      } else {
-        unverifiedResumeClaims++;
-        flagged.push({
-          type: "Unverified Resume Claim",
-          term: term,
-          reason: `Claimed experience with "${term}" which was not found in the uploaded resume.`,
-          severity: "MEDIUM"
-        });
-      }
-    });
+
+  if (hallucinationTypes.cv !== false) {
+    if (answerTechTerms.length > 0) {
+      answerTechTerms.forEach(term => {
+        const existsInResume = resumeTechTerms.includes(term) || !resumeText;
+        if (existsInResume) {
+          verified.push({ term, source: resumeText ? "Grounded in Resume" : "Standard Domain Tech" });
+        } else {
+          unverifiedResumeClaims++;
+          flagged.push({
+            type: "Unverified Resume Claim",
+            term: term,
+            reason: `Claimed experience with "${term}" which was not found in the uploaded resume.`,
+            severity: "MEDIUM"
+          });
+        }
+      });
+    }
   }
 
   // 4. Calculate Risk Score (0 = Fully Grounded, 100 = High Risk)

@@ -51,6 +51,8 @@ export default function Interview() {
   const resumeText    = sessionStorage.getItem("resumeText")    || "";
   const jobRole       = sessionStorage.getItem("jobRole")       || "";
   const candidateName = sessionStorage.getItem("candidateName") || "Candidate";
+  const companyName   = sessionStorage.getItem("companyName")   || "";
+  const interviewType = sessionStorage.getItem("interviewType") || "mock";
 
   const [questions,   setQuestions]   = useState([]);
   const [currentIdx,  setCurrentIdx]  = useState(0);
@@ -99,13 +101,28 @@ export default function Interview() {
         setLoadingMsg("Reading your resume...");
         await new Promise(r => setTimeout(r, 600));
         setLoadingMsg("Generating your personalised questions...");
+        const selectedPYQ = sessionStorage.getItem("selectedPYQ") || "";
+        const selectedLLM = sessionStorage.getItem("selectedLLM") || "llama-3-edge";
+        const excludeQuestions = JSON.parse(sessionStorage.getItem("excludeQuestions") || "[]");
         const res = await axios.post(
           `${BACKEND}/api/interview/questions`,
-          { resumeText, jobRole },
+          { 
+            resumeText, 
+            jobRole, 
+            companyName, 
+            companyPYQ: selectedPYQ, 
+            llmModel: selectedLLM, 
+            excludeQuestions 
+          },
           { headers: ztaHeaders({ "Content-Type": "application/json" }) }
         );
         if (!res.data.success) throw new Error(res.data.error);
         setQuestions(res.data.questions);
+        
+        // Prevent repeated questions by adding them to the excludeQuestions list
+        const newExcludes = [...excludeQuestions, ...res.data.questions.map(q => q.question)];
+        sessionStorage.setItem("excludeQuestions", JSON.stringify(newExcludes));
+
         setLoading(false);
         setPhase("intro");
       } catch (err) {
@@ -213,9 +230,26 @@ export default function Interview() {
       idealAnswer: "", biasCheck: { passed: true },
     };
     try {
+      const llmModel = sessionStorage.getItem("selectedLLM") || "llama-3-edge";
+      let hallocTypes = { cv: true, context: true, facts: true };
+      try {
+        const rawTypes = sessionStorage.getItem("hallucinationTypes");
+        if (rawTypes) hallocTypes = JSON.parse(rawTypes);
+      } catch (e) {}
+
       const res = await axios.post(
         `${BACKEND}/api/evaluate/answer`,
-        { question: q.question, answer: finalAnswer, questionType: q.type, skill: q.skill, jobRole, resumeText },
+        { 
+          question: q.question, 
+          answer: finalAnswer, 
+          questionType: q.type, 
+          skill: q.skill, 
+          jobRole, 
+          resumeText,
+          candidateName,
+          llmModel,
+          hallucinationTypes: hallocTypes
+        },
         { headers: ztaHeaders({ "Content-Type": "application/json" }) }
       );
       result = { ...result, ...res.data };
@@ -351,7 +385,9 @@ export default function Interview() {
       <header style={s.navbar} className="glass-card">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 20 }}>🤖</span>
-          <span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: "var(--font-headings)" }}>TrustInterview AI</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: "var(--font-headings)" }}>
+            {companyName ? `${companyName} Assessments` : "TrustInterview AI"}
+          </span>
           {ztaEnabled === false ? (
             <span className="badge badge-error">⚠️ ZTA OFF</span>
           ) : (
@@ -387,10 +423,49 @@ export default function Interview() {
         <div style={{ ...s.progressBarFill, width: `${(currentIdx / questions.length) * 100}%` }} />
       </div>
 
+      {companyName && (
+        <div 
+          className="glass-card fade-in-up" 
+          style={{ 
+            maxWidth: 1200, 
+            margin: "20px auto 20px", 
+            padding: "16px 24px", 
+            background: "rgba(99, 102, 241, 0.06)", 
+            border: "1px solid rgba(99, 102, 241, 0.2)", 
+            borderRadius: "12px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "16px"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "20px" }}>🏢</span>
+            <div>
+              <div style={{ fontSize: "14px", fontWeight: 800, color: "#fff", fontFamily: "var(--font-headings)" }}>
+                Hiring Partner: {companyName} {interviewType === "actual" ? " (Official Placement Drive)" : " (Practice Mock Sandbox)"}
+              </div>
+              <div style={{ fontSize: "11.5px", color: "var(--text-muted)", marginTop: "2px" }}>
+                Target Placement Campaign Role: <strong>{jobRole || "AI Specialist"}</strong>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "20px", fontSize: "12.5px" }}>
+            <span style={{ color: "#a5b4fc" }}>
+              📚 <strong>PYQ Syllabus:</strong> {sessionStorage.getItem("selectedPYQ") || "Google SWE 2025"}
+            </span>
+            <span style={{ color: "#10b981", fontWeight: 700 }}>
+              🔒 <strong>Placement Cutoff:</strong> CGPA >= {sessionStorage.getItem("minCgpa") || "8.0"}
+            </span>
+          </div>
+        </div>
+      )}
+
       <div style={s.mainGrid}>
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <CameraFeed candidateName={candidateName} recording={recording} />
-          
+
           <div className="glass-card" style={s.card}>
             <div style={s.cardTitle}>🎙️ Voice Input</div>
             {!recording ? (
