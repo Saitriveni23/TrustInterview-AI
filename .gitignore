@@ -11,3 +11,6 @@ frontend/build/
 node_modules/
 logs/
 uploads/
+.env
+.env.save
+*.env.save
