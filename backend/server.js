@@ -3,6 +3,7 @@ const express   = require("express");
 const cors      = require("cors");
 const helmet    = require("helmet");
 const rateLimit = require("express-rate-limit");
+const session   = require("express-session");
 
 const { identityMiddleware, generateSession } = require("./middleware/zta-identity");
 const { deviceMiddleware }                    = require("./middleware/zta-device");
@@ -11,6 +12,7 @@ const { soarMiddleware, getThreatLevel }      = require("./middleware/zta-soar")
 const { governanceMiddleware }                = require("./middleware/zta-governance");
 const { pdpMiddleware }                       = require("./middleware/zta-pdp");
 const { threatIntelMiddleware }               = require("./middleware/zta-threat-intel");
+const { passport }                            = require("./config/passport");
 
 const app    = express();
 const ZTA_ON = process.env.ZTA_ENABLED !== "false";
@@ -86,6 +88,22 @@ if (ZTA_ON) {
   console.warn("[DEMO] Payload size limit OFF  memory exhaustion possible - server.js:86");
 }
 
+// Session middleware for Google OAuth
+app.use(session({
+  secret: process.env.JWT_SECRET || 'your-random-secret-key-here',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
 if (ZTA_ON) {
   app.use(deviceMiddleware);
 } else {
@@ -154,6 +172,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/resume",    require("./routes/resume"));
 app.use("/api/interview", require("./routes/interview"));
 app.use("/api/evaluate",  require("./routes/evaluate"));
+app.use("/api/auth",      require("./routes/google-auth"));
 
 // ZTA Status endpoint — called by frontend to show live status
 app.get("/api/zta-status", (req, res) => {
