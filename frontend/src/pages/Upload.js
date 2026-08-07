@@ -1,5 +1,5 @@
 import ZTAStatusDashboard from "../components/ZTAStatusDashboard";
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5001";
@@ -148,7 +148,23 @@ export default function Upload() {
   });
   const [isZtaDrawerOpen, setIsZtaDrawerOpen] = useState(false);
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("pyqs");
-  const [interviewType, setInterviewType] = useState("mock"); // "mock" or "actual"
+  const [interviewType, setInterviewType] = useState(() => sessionStorage.getItem("interviewType") || "mock"); // "mock" or "actual"
+  const [selectedInterviewMode, setSelectedInterviewMode] = useState(null); // null = Company Page, "mock" = Next Page Mock, "actual" = Next Page Actual
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [profileHistory, setProfileHistory] = useState([]);
+
+  useEffect(() => {
+    if (isProfileOpen) {
+      const rawHistory = localStorage.getItem("candidateAssessmentHistory");
+      if (rawHistory) {
+        try {
+          setProfileHistory(JSON.parse(rawHistory));
+        } catch (e) {
+          setProfileHistory([]);
+        }
+      }
+    }
+  }, [isProfileOpen]);
   const [status,        setStatus]        = useState("idle");
   const [drag,          setDrag]          = useState(false);
   const [isBlocked,     setIsBlocked]     = useState(false);
@@ -356,6 +372,7 @@ export default function Upload() {
       sessionStorage.setItem("candidateName", candidateName.trim());
       sessionStorage.setItem("questions",     JSON.stringify(qData.questions));
       sessionStorage.setItem("biasReport",    JSON.stringify(qData.biasReport));
+      sessionStorage.setItem("interviewType", selectedInterviewMode || interviewType || "mock");
       sessionStorage.setItem("selectedLLM",   selectedLLM);
       sessionStorage.setItem("hallucinationTypes", JSON.stringify(hallucinationTypes));
 
@@ -431,6 +448,27 @@ export default function Upload() {
               onClick={() => setIsZtaDrawerOpen(true)}
             >
               🛡️ View Security Matrix
+            </button>
+            <button
+              style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: "20px",
+                color: "#a5b4fc",
+                fontSize: "11.5px",
+                fontWeight: "700",
+                padding: "8px 16px",
+                cursor: "pointer",
+                fontFamily: "var(--font-headings)",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                transition: "all 0.2s"
+              }}
+              onClick={() => setIsProfileOpen(true)}
+              className="glow-btn"
+            >
+              👤 Profile
             </button>
             <button
               style={{
@@ -553,6 +591,7 @@ export default function Upload() {
                       handleRecruiterLogin(comp.name, comp.cutoff, comp.pyq);
                       setJobRole(comp.role);
                       triggerNotificationAlert(comp.name, comp.cutoff, comp.pyq, comp.role);
+                      setSelectedInterviewMode(null);
                     }}
                   >
                     <div>
@@ -587,7 +626,7 @@ export default function Upload() {
 
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "8px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                         <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 700, background: "rgba(16, 185, 129, 0.1)", padding: "2px 8px", borderRadius: "10px" }}>
-                          CGPA >= {comp.cutoff}
+                          CGPA &gt;= {comp.cutoff}
                         </span>
                         <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
                           📚 PYQ syllabus
@@ -627,569 +666,949 @@ export default function Upload() {
              SLIDE 2: SELECTED COMPANY FOCUSED WORKSPACE
              ==================================================== */
           <div className="fade-in-up">
-            
-            {/* Back Button control (Styled as a premium pill button) */}
-            <button
-              onClick={() => {
-                handleRecruiterLogout();
-                setSelectedCompanyData(null);
-                setShowSettings(false);
-              }}
-              style={{
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid rgba(255, 255, 255, 0.08)",
-                borderRadius: "20px",
-                color: "#cbd5e1",
-                fontSize: "12.5px",
-                fontWeight: 700,
-                cursor: "pointer",
-                padding: "8px 20px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                marginBottom: "24px",
-                fontFamily: "var(--font-headings)",
-                transition: "all 0.2s"
-              }}
-              className="glow-btn"
-            >
-              ← Back to Placements Catalog</button>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.15fr", gap: "32px", alignItems: "start" }}>
-              
-              {/* Left Column: Config Panel OR Upload Card */}
-              {showSettings ? (
-                <div className="glass-card" style={{ ...styles.card, padding: "28px" }}>
-                  <h2 style={{ ...styles.title, fontSize: "18px", marginBottom: "8px" }}>Recruiter Configuration</h2>
-                  <p style={{ ...styles.sub, fontSize: "12px", marginBottom: "20px" }}>
-                    Define candidate requirements and PYQ questions database for the active placement cycle.
-                  </p>
-
-                  {/* Field: Company Name */}
-                  <div style={styles.field}>
-                    <label style={styles.label}>Company Name</label>
-                    <input
-                      className="form-input"
-                      type="text"
-                      placeholder="e.g. Google"
-                      value={recruiterCompany}
-                      onChange={e => setRecruiterCompany(sanitize(e.target.value))}
-                    />
-                  </div>
-
-                  {/* Field: Min CGPA Cutoff */}
-                  <div style={styles.field}>
-                    <label style={styles.label}>Minimum CGPA Eligibility</label>
-                    <input
-                      className="form-input"
-                      type="text"
-                      placeholder="e.g. 8.0"
-                      value={minCgpa}
-                      onChange={e => setMinCgpa(sanitize(e.target.value))}
-                    />
-                  </div>
-
-                  {/* Field: Select PYQs */}
-                  <div style={styles.field}>
-                    <label style={styles.label}>Previous Year Placement Paper</label>
-                    <select
-                      className="form-input"
-                      value={selectedPYQ}
-                      onChange={e => setSelectedPYQ(e.target.value)}
-                      style={{ background: "rgba(15, 23, 42, 0.95)", color: "#ffffff" }}
-                    >
-                      <option value="Google SWE 2025">Google SWE 2025 placement paper</option>
-                      <option value="Microsoft Developer 2024">Microsoft Developer 2024 placement criteria</option>
-                      <option value="TCS Digital & Ninja PYQs">TCS Digital & Ninja standard PYQs</option>
-                      <option value="RVCE Campus Placements 2025">RVCE Placement cell syllabus</option>
-                    </select>
-                  </div>
-
-                  {/* Field: LLM Model Selection */}
-                  <div style={styles.field}>
-                    <label style={styles.label}>Select LLM Evaluation Engine</label>
-                    <select
-                      className="form-input"
-                      value={selectedLLM}
-                      onChange={e => {
-                        setSelectedLLM(e.target.value);
-                        sessionStorage.setItem("selectedLLM", e.target.value);
-                      }}
-                      style={{ background: "rgba(15, 23, 42, 0.95)", color: "#ffffff" }}
-                    >
-                      <option value="llama-3-edge">Llama 3 Edge (On-Premises Core)</option>
-                      <option value="phi-3-lightweight">Phi-3 (Lightweight sandbox)</option>
-                      <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast compliance shield)</option>
-                      <option value="gemini-1.5-pro">Gemini 1.5 Pro (Cloud evaluation cluster)</option>
-                    </select>
-                  </div>
-
-                  {/* Field: Anti-Hallucination Scanning Modes */}
-                  <div style={styles.field}>
-                    <label style={styles.label}>Anti-Hallucination Scanners (L13)</label>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#cbd5e1", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={hallucinationTypes.cv}
-                          onChange={e => setHallucinationTypes({ ...hallucinationTypes, cv: e.target.checked })}
-                        />
-                        Verify against Resume (CV Grounding)
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#cbd5e1", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={hallucinationTypes.context}
-                          onChange={e => setHallucinationTypes({ ...hallucinationTypes, context: e.target.checked })}
-                        />
-                        Detect Impossible Metric Claims
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#cbd5e1", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={hallucinationTypes.facts}
-                          onChange={e => setHallucinationTypes({ ...hallucinationTypes, facts: e.target.checked })}
-                        />
-                        Scan for Technical Version Anomalies
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Settings Action Buttons */}
-                  <div style={{ display: "flex", gap: "10px", marginTop: "24px" }}>
-                    <button
-                      className="glow-btn"
-                      style={{ flex: 1, padding: "10px", fontSize: "13px" }}
-                      onClick={() => {
-                        handleRecruiterLogin(recruiterCompany, minCgpa, selectedPYQ);
-                      }}
-                    >
-                      Save & Login
-                    </button>
-                    {sessionStorage.getItem("companyName") && (
-                      <button
-                        className="glow-btn"
-                        style={{ background: "rgba(244, 63, 94, 0.1)", border: "1px solid rgba(244, 63, 94, 0.2)", color: "#f43f5e", flex: 1, padding: "10px", fontSize: "13px" }}
-                        onClick={() => {
-                          handleRecruiterLogout();
-                          setSelectedCompanyData(null);
-                          setShowSettings(false);
-                        }}
-                      >
-                        Logout
-                      </button>
-                    )}
-                    <button
-                      className="glow-btn"
-                      style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#cbd5e1", flex: 1, padding: "10px", fontSize: "13px" }}
-                      onClick={() => setShowSettings(false)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="glass-card" style={{ ...styles.card, padding: "28px" }}>
-                  {/* Tabs to select between Practice Mock and Official Placement Assessment */}
-                  <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "12px" }}>
-                    <button
-                      onClick={() => {
-                        setInterviewType("mock");
-                        sessionStorage.setItem("interviewType", "mock");
-                      }}
-                      style={{
-                        flex: 1,
-                        background: interviewType === "mock" ? "rgba(99, 102, 241, 0.15)" : "none",
-                        border: interviewType === "mock" ? "1px solid var(--color-primary)" : "1px solid rgba(255,255,255,0.05)",
-                        color: interviewType === "mock" ? "#ffffff" : "var(--text-muted)",
-                        padding: "8px",
-                        borderRadius: "10px",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        fontFamily: "var(--font-headings)",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      🧪 Practice Mock
-                    </button>
-                    <button
-                      onClick={() => {
-                        setInterviewType("actual");
-                        sessionStorage.setItem("interviewType", "actual");
-                      }}
-                      style={{
-                        flex: 1,
-                        background: interviewType === "actual" ? "rgba(16, 185, 129, 0.15)" : "none",
-                        border: interviewType === "actual" ? "1px solid #10b981" : "1px solid rgba(255,255,255,0.05)",
-                        color: interviewType === "actual" ? "#ffffff" : "var(--text-muted)",
-                        padding: "8px",
-                        borderRadius: "10px",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        fontFamily: "var(--font-headings)",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      🎓 Official Graded
-                    </button>
-                  </div>
-
-                  <h2 style={{ ...styles.title, fontSize: "20px", marginBottom: "8px" }}>
-                    {interviewType === "actual" ? "Official Graded Placement" : "Practice Mock Assessment"}
-                  </h2>
-                  <p style={{ ...styles.sub, fontSize: "12.5px", marginBottom: "20px" }}>
-                    {interviewType === "actual" 
-                      ? `Entering the official campus placement evaluation sandbox for candidate hiring under ${selectedCompanyData.name} recruitment drive.`
-                      : `Entering practice assessment sandbox for candidate practice under ${selectedCompanyData.name} placement criteria.`}
-                  </p>
-
-                  {/* Field: Full Name */}
-                  <div style={styles.field}>
-                    <label style={styles.label}>
-                      Your Full Name
-                      <span className="badge badge-warning" style={{ fontSize: 9, padding: "2px 6px" }}>Bias Checked</span>
-                    </label>
-                    <input
-                      className="form-input"
-                      type="text"
-                      placeholder="e.g. Sneha Sharma"
-                      value={candidateName}
-                      maxLength={100}
-                      onChange={e => setCandidateName(sanitize(e.target.value))}
-                      disabled={busy}
-                    />
-                    <small style={styles.hint}>
-                      🔒 Scrambled under Layer 12. Evaluation models analyze only your content, never your name or identity.
-                    </small>
-                  </div>
-
-                  {/* Field: Job Role */}
-                  <div style={styles.field}>
-                    <label style={styles.label}>Target Job Role</label>
-                    <input
-                      className="form-input"
-                      type="text"
-                      placeholder="e.g. Senior Frontend Engineer"
-                      value={jobRole}
-                      maxLength={100}
-                      onChange={e => setJobRole(sanitize(e.target.value))}
-                      disabled={busy}
-                    />
-                  </div>
-
-                  {/* File Drop Zone */}
-                  <div
-                    style={{
-                      ...styles.dropZone,
-                      borderColor: drag ? "var(--color-primary)" : file ? "var(--color-success)" : "rgba(255, 255, 255, 0.15)",
-                      background:  drag ? "rgba(139, 92, 246, 0.05)" : file ? "rgba(16, 185, 129, 0.05)" : "rgba(255, 255, 255, 0.01)",
-                      boxShadow:   drag ? "var(--shadow-glow)" : file ? "var(--shadow-success-glow)" : "none",
-                    }}
-                    onClick={() => !busy && inputRef.current.click()}
-                    onDragOver={e => { e.preventDefault(); setDrag(true); }}
-                    onDragLeave={() => setDrag(false)}
-                    onDrop={onDrop}
-                  >
-                    <input
-                      ref={inputRef}
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      style={{ display: "none" }}
-                      onChange={e => handleFile(e.target.files[0])}
-                    />
-                    {file ? (
-                      <div style={styles.fileReady}>
-                        <span style={{ fontSize: 32 }}>📄</span>
-                        <div style={{ textAlign: "left", flex: 1 }}>
-                          <div style={styles.fileName}>{file.name}</div>
-                          <div style={styles.fileMeta}>{(file.size / 1024).toFixed(0)} KB · PDF Format Verified</div>
-                        </div>
-                        <button
-                          style={styles.clearBtn}
-                          onClick={e => { e.stopPropagation(); setFile(null); }}
-                        >✕ Remove</button>
-                      </div>
-                    ) : (
-                      <div style={styles.dropPrompt}>
-                        <span style={{ fontSize: 28, color: "var(--text-muted)" }}>⬆️</span>
-                        <p style={{ margin: "10px 0 4px", fontWeight: 600, color: "var(--text-main)", fontSize: 14 }}>
-                          Drop your PDF resume here or <span style={{ color: "var(--color-primary)", textDecoration: "underline", cursor: "pointer" }}>browse files</span>
-                        </p>
-                        <small style={{ color: "var(--text-muted)", fontSize: 11 }}>Only PDF allowed · Max 10MB file size</small>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Interactive L9 PDP Eligibility check console */}
-                  {eligibilityCheck && (
-                    <div style={{
-                      background: "rgba(11, 15, 25, 0.8)",
-                      border: `1px solid ${eligibilityCheck === "passed" ? "rgba(16, 185, 129, 0.3)" : eligibilityCheck === "failed" ? "rgba(239, 68, 68, 0.3)" : "rgba(255, 255, 255, 0.1)"}`,
-                      borderRadius: "8px",
-                      padding: "14px",
-                      marginBottom: "20px",
-                      fontFamily: "monospace",
-                      fontSize: "11px"
-                    }}>
-                      <div style={{ color: eligibilityCheck === "passed" ? "#10b981" : eligibilityCheck === "failed" ? "#ef4444" : "#a5b4fc", fontWeight: 700, marginBottom: "8px" }}>
-                        {eligibilityCheck === "checking" && "⏳ L9 PDP CUTOFF CHECKING:"}
-                        {eligibilityCheck === "passed" && "✅ L9 PDP RECRUITMENT AUDIT PASSED:"}
-                        {eligibilityCheck === "failed" && "🛑 L9 PDP RECRUITMENT AUDIT FAILED:"}
-                      </div>
-                      {eligibilityLogs.map((log, index) => (
-                        <div key={index} style={{ color: "#94a3b8", margin: "3px 0" }}>{log}</div>
-                      ))}
-                    </div>
-                  )}
-
-                  {error && (
-                    <div style={styles.errorBox} className="badge-error">
-                      <span>⚠️</span> {error}
-                    </div>
-                  )}
-
-                  {/* Actions */}
+            {selectedInterviewMode === null ? (
+              /* ----------------------------------------------------
+                 COMPANY HUB OVERVIEW PAGE (SEPARATE SECTIONS FOR MOCK & ACTUAL)
+                 ---------------------------------------------------- */
+              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                
+                {/* Back Button & Company Header Bar */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
                   <button
+                    onClick={() => {
+                      handleRecruiterLogout();
+                      setSelectedCompanyData(null);
+                      setShowSettings(false);
+                      setSelectedInterviewMode(null);
+                    }}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.03)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "20px",
+                      color: "#cbd5e1",
+                      fontSize: "12.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: "8px 20px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontFamily: "var(--font-headings)",
+                      transition: "all 0.2s"
+                    }}
                     className="glow-btn"
-                    style={{
-                      width: "100%",
-                      marginTop: 8,
-                      padding: "14px",
-                      fontSize: 15,
-                      background: (busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed") 
-                        ? "rgba(255, 255, 255, 0.05)" 
-                        : (interviewType === "actual" 
-                            ? "linear-gradient(135deg, #10b981, #059669)" 
-                            : "linear-gradient(135deg, var(--color-primary), #6366f1)")
-                    }}
-                    onClick={handleSubmit}
-                    disabled={busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed"}
                   >
-                    {status === "connecting"  && "Establishing secure session…"}
-                    {status === "uploading"   && "Uploading & parsing resume…"}
-                    {status === "checking_eligibility" && "Checking Placement Eligibility…"}
-                    {status === "generating"  && "AI generating questions…"}
-                    {status === "idle"        && (interviewType === "actual" ? "Start Official Placement Interview →" : "Start Practice Mock Interview →")}
-                    {status === "done"        && "Ready! Redirecting…"}</button>
-
-                  {/* Progress indicators when busy */}
-                  {busy && (
-                    <div style={styles.progressWrap}>
-                      {[
-                        { key: "connecting",  label: "1. Handshaking secure session token" },
-                        { key: "uploading",   label: "2. Uploading & extracting text blocks" },
-                        { key: "checking_eligibility", label: "3. Running Layer 9 Placement Eligibility PDP check" },
-                        { key: "generating",  label: "4. Generating company PYQ-aligned questions" },
-                      ].map(step => {
-                        const isActive = status === step.key;
-                        return (
-                          <div key={step.key} style={{
-                            ...styles.progressStep,
-                            color: isActive ? "var(--color-primary)" : "var(--text-muted)",
-                            fontWeight: isActive ? 600 : 400,
-                          }}>
-                            {isActive ? (
-                              <span style={styles.miniSpinner} />
-                            ) : (
-                              <span style={{ fontSize: 10, marginRight: 8 }}>○</span>
-                            )}
-                            {step.label}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-                            {/* Right Column: Interactive Workspace Tabs for PYQs and Details */}
-              <div className="glass-card" style={{ ...styles.card, padding: "28px" }}>
-                {/* Horizontal tabs */}
-                <div style={{ display: "flex", gap: "10px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "12px", marginBottom: "20px" }}>
-                  <button
-                    onClick={() => setActiveWorkspaceTab("pyqs")}
-                    style={{
-                      background: activeWorkspaceTab === "pyqs" ? "rgba(99, 102, 241, 0.15)" : "none",
-                      border: activeWorkspaceTab === "pyqs" ? "1px solid var(--color-primary)" : "1px solid transparent",
-                      color: activeWorkspaceTab === "pyqs" ? "#ffffff" : "var(--text-muted)",
-                      padding: "6px 14px",
-                      borderRadius: "15px",
-                      fontSize: "12.5px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontFamily: "var(--font-headings)",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    📚 Previous Year Questions (PYQs)
+                    ← Back to Placements Catalog
                   </button>
-                  <button
-                    onClick={() => setActiveWorkspaceTab("requirements")}
-                    style={{
-                      background: activeWorkspaceTab === "requirements" ? "rgba(99, 102, 241, 0.15)" : "none",
-                      border: activeWorkspaceTab === "requirements" ? "1px solid var(--color-primary)" : "1px solid transparent",
-                      color: activeWorkspaceTab === "requirements" ? "#ffffff" : "var(--text-muted)",
-                      padding: "6px 14px",
-                      borderRadius: "15px",
-                      fontSize: "12.5px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontFamily: "var(--font-headings)",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    🏢 Company Requirements
-                  </button>
-                  <button
-                    onClick={() => setActiveWorkspaceTab("sandbox")}
-                    style={{
-                      background: activeWorkspaceTab === "sandbox" ? "rgba(99, 102, 241, 0.15)" : "none",
-                      border: activeWorkspaceTab === "sandbox" ? "1px solid var(--color-primary)" : "1px solid transparent",
-                      color: activeWorkspaceTab === "sandbox" ? "#ffffff" : "var(--text-muted)",
-                      padding: "6px 14px",
-                      borderRadius: "15px",
-                      fontSize: "12.5px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontFamily: "var(--font-headings)",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    🛡️ Mock Interview Sandbox
-                  </button>
-                </div>
 
-                {/* Tab content 1: PYQs */}
-                {activeWorkspaceTab === "pyqs" && (
-                  <div className="fade-in-up">
-                    <h4 style={{ color: "#ffffff", fontSize: "15px", fontWeight: 800, margin: "0 0 12px 0", fontFamily: "var(--font-headings)" }}>
-                      📚 {selectedCompanyData.name} Past Placement Papers
-                    </h4>
-                    <p style={{ color: "var(--text-muted)", fontSize: "12.5px", margin: "0 0 16px 0", lineHeight: 1.4 }}>
-                      The following questions have been compiled from previous campus recruitment drives at RVCE for the target role: <strong>{selectedCompanyData.role}</strong>.
-                    </p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                      {(MOCK_PYQS_MAP[selectedCompanyData.name.split(" ")[0].toLowerCase()] || [
-                        "Explain key system design components of a scaled distributed web service.",
-                        "Write a recursive function to check if a binary search tree is height-balanced.",
-                        "Describe transaction isolation levels and concurrency controls in modern databases."
-                      ]).map((q, idx) => (
-                        <div key={idx} style={{
-                          background: "rgba(255,255,255,0.02)",
-                          border: "1px solid rgba(255,255,255,0.05)",
-                          padding: "12px 16px",
-                          borderRadius: "10px",
-                          fontSize: "13px",
-                          lineHeight: 1.5,
-                          color: "#cbd5e1"
-                        }}>
-                          <span style={{ color: "var(--color-primary)", fontWeight: 800, marginRight: "8px" }}>Q{idx + 1}:</span>
-                          {q}
-                        </div>
-                      ))}
-                    </div>
+                  <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                    <span style={{ fontSize: "12px", color: "#10b981", background: "rgba(16, 185, 129, 0.1)", padding: "4px 12px", borderRadius: "20px", border: "1px solid rgba(16, 185, 129, 0.2)", fontWeight: 700 }}>
+                      CGPA Cutoff &gt;= {selectedCompanyData.cutoff}
+                    </span>
+                    <span style={{ fontSize: "12px", color: "#38bdf8", background: "rgba(56, 189, 248, 0.1)", padding: "4px 12px", borderRadius: "20px", border: "1px solid rgba(56, 189, 248, 0.2)", fontWeight: 700 }}>
+                      {selectedCompanyData.spots} spots filled
+                    </span>
                   </div>
-                )}
+                </div>
 
-                {/* Tab content 2: Requirements */}
-                {activeWorkspaceTab === "requirements" && (
-                  <div className="fade-in-up" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {/* Company Details Banner */}
+                <div className="glass-card" style={{ padding: "28px", background: "rgba(17, 24, 39, 0.65)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
                     <div>
-                      <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-                        Hiring Company
-                      </strong>
-                      <span style={{ fontSize: "14px", color: "#ffffff", fontWeight: 700 }}>
-                        {selectedCompanyData.name} ({selectedCompanyData.domain})
+                      <span style={{ fontSize: "11px", color: "var(--color-primary)", textTransform: "uppercase", fontWeight: 800, letterSpacing: "0.08em" }}>
+                        {selectedCompanyData.domain}
                       </span>
-                    </div>
-
-                    <div>
-                      <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-                        Target Placement Role
-                      </strong>
-                      <span style={{ fontSize: "14px", color: "#a5b4fc", fontWeight: 700 }}>{selectedCompanyData.role}</span>
-                    </div>
-
-                    <div>
-                      <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-                        Job Description
-                      </strong>
-                      <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
+                      <h2 style={{ fontSize: "24px", fontWeight: 800, color: "#ffffff", margin: "4px 0", fontFamily: "var(--font-headings)" }}>
+                        {selectedCompanyData.name}
+                      </h2>
+                      <div style={{ fontSize: "15px", color: "#a5b4fc", fontWeight: 700, marginBottom: "8px" }}>
+                        Role: {selectedCompanyData.role}
+                      </div>
+                      <p style={{ fontSize: "13.5px", color: "var(--text-muted)", margin: 0, maxWidth: "800px", lineHeight: 1.5 }}>
                         {selectedCompanyData.description}
                       </p>
                     </div>
 
-                    <div>
-                      <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-                        Required Technical Stack
-                      </strong>
-                      <span style={{ fontSize: "13.5px", color: "#38bdf8", fontWeight: 700 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Target Technical Stack</span>
+                      <span style={{ fontSize: "13px", color: "#38bdf8", fontWeight: 700, background: "rgba(56, 189, 248, 0.08)", padding: "4px 10px", borderRadius: "8px", border: "1px solid rgba(56, 189, 248, 0.15)" }}>
                         {selectedCompanyData.skills}
                       </span>
                     </div>
+                  </div>
+                </div>
 
-                    <div style={{ display: "flex", gap: "20px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "14px" }}>
-                      <div style={{ flex: 1 }}>
-                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>
-                          Min eligibility cutoff
-                        </strong>
-                        <span style={{ fontSize: "14px", color: "#10b981", fontWeight: 800 }}>
-                          CGPA >= {selectedCompanyData.cutoff}
-                        </span>
+                {/* SEPARATE SECTIONS FOR MOCK INTERVIEW AND ACTUAL INTERVIEW */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#ffffff", margin: 0, fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>
+                      ⚡ Select Assessment Sandbox Mode
+                    </h3>
+                    <span style={{ fontSize: "11.5px", color: "#a5b4fc", background: "rgba(99, 102, 241, 0.1)", padding: "4px 12px", borderRadius: "14px", border: "1px solid rgba(99, 102, 241, 0.2)", fontWeight: 700 }}>
+                      🛡️ ZTA 13-LAYER SECURITY MATRIX ACTIVE
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+                    
+                    {/* SECTION 1: PRACTICE MOCK INTERVIEW */}
+                    <div className="glass-card" style={{
+                      padding: "28px",
+                      background: "rgba(17, 24, 39, 0.55)",
+                      border: "1px solid rgba(99, 102, 241, 0.35)",
+                      borderRadius: "20px",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      gap: "20px",
+                      boxShadow: "0 12px 35px rgba(99, 102, 241, 0.12)",
+                      transition: "all 0.2s"
+                    }}>
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#a5b4fc", background: "rgba(99, 102, 241, 0.15)", padding: "4px 12px", borderRadius: "14px", border: "1px solid rgba(99, 102, 241, 0.3)", fontFamily: "var(--font-headings)" }}>
+                            🧪 PRACTICE MOCK SANDBOX
+                          </span>
+                          <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 700 }}>🛡️ ZTA-L12/13 PROTECTED</span>
+                        </div>
+
+                        <h3 style={{ fontSize: "22px", fontWeight: 800, color: "#ffffff", margin: "0 0 10px 0", fontFamily: "var(--font-headings)" }}>
+                          Practice Mock Interview
+                        </h3>
+                        <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: "0 0 20px 0", lineHeight: 1.5 }}>
+                          Take a risk-free practice interview tailored to {selectedCompanyData.name}'s PYQ papers. Test your skills, get instant AI evaluation feedback, and improve without affecting your official placement records.
+                        </p>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12.5px", color: "#cbd5e1", background: "rgba(255,255,255,0.02)", padding: "16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={{ color: "#a5b4fc", fontWeight: 800 }}>🔒 ZTA-L12</span> Demographic Shield: Zero-bias identity scrambling
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={{ color: "#a5b4fc", fontWeight: 800 }}>🔍 ZTA-L13</span> Factuality Audit: CV grounding & anomaly detection
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={{ color: "#a5b4fc", fontWeight: 800 }}>⚡ ZTA-L1/2</span> Session Sandbox: Instant AI scoring without placement risk
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>
-                          Placement Paper Active
-                        </strong>
-                        <span style={{ fontSize: "13px", color: "#a5b4fc", fontWeight: 700 }}>
-                          {selectedCompanyData.pyq}
-                        </span>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <button
+                          className="glow-btn"
+                          style={{
+                            width: "100%",
+                            padding: "14px",
+                            fontSize: "14px",
+                            fontWeight: 700,
+                            background: "linear-gradient(135deg, var(--color-primary), #6366f1)",
+                            color: "#ffffff",
+                            borderRadius: "12px",
+                            cursor: "pointer",
+                            transition: "all 0.2s"
+                          }}
+                          onClick={() => {
+                            setInterviewType("mock");
+                            sessionStorage.setItem("interviewType", "mock");
+                            setSelectedInterviewMode("mock");
+                          }}
+                        >
+                          Start Practice Mock Interview →
+                        </button>
+                        <button
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#a5b4fc",
+                            fontSize: "11px",
+                            cursor: "pointer",
+                            textAlign: "center",
+                            fontFamily: "var(--font-headings)"
+                          }}
+                          onClick={() => setIsZtaDrawerOpen(true)}
+                        >
+                          🛡️ Inspect ZTA Security Matrix for Mock Mode
+                        </button>
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {/* Tab content 3: Mock Interview Sandbox */}
-                {activeWorkspaceTab === "sandbox" && (
-                  <div className="fade-in-up" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                    <h4 style={{ color: "#ffffff", fontSize: "15px", fontWeight: 800, margin: "0 0 4px 0", fontFamily: "var(--font-headings)" }}>
-                      🛡️ Secure Interview Sandbox Instructions
-                    </h4>
-                    <p style={{ color: "var(--text-muted)", fontSize: "12.5px", margin: 0, lineHeight: 1.5 }}>
-                      This interview is monitored by our 13-layer Zero Trust Architecture to verify compliance and prevent academic dishonesty.
-                    </p>
-                    <ul style={{ color: "#cbd5e1", fontSize: "12.5px", margin: "8px 0", paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <li><strong>AI Adaptation</strong>: Questions are dynamically aligned to your resume skills and {selectedCompanyData.name}'s PYQ placement papers.</li>
-                      <li><strong>Eligibility Cutoff</strong>: Layer 9 checking is triggered upon submission to verify your CGPA criteria is satisfied.</li>
-                      <li><strong>Tab Focus & Anti-Cheat</strong>: Navigating away, opening developer tools, or losing window focus blocks your session immediately.</li>
-                      <li><strong>Camera & Audio</strong>: Active feed verification ensures continuous biometric presence throughout the 7 assessment questions.</li>
-                    </ul>
-                    <div style={{
-                      background: "rgba(16, 185, 129, 0.05)",
-                      border: "1px solid rgba(16, 185, 129, 0.2)",
-                      padding: "10px 14px",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                      color: "#10b981",
+                    {/* SECTION 2: OFFICIAL GRADED PLACEMENT INTERVIEW */}
+                    <div className="glass-card" style={{
+                      padding: "28px",
+                      background: "rgba(17, 24, 39, 0.55)",
+                      border: "1px solid rgba(16, 185, 129, 0.35)",
+                      borderRadius: "20px",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      gap: "20px",
+                      boxShadow: "0 12px 35px rgba(16, 185, 129, 0.12)",
+                      transition: "all 0.2s"
+                    }}>
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "4px 12px", borderRadius: "14px", border: "1px solid rgba(16, 185, 129, 0.3)", fontFamily: "var(--font-headings)" }}>
+                            🎓 OFFICIAL PLACEMENT DRIVE
+                          </span>
+                          <span style={{ fontSize: "11px", color: "#38bdf8", fontWeight: 700 }}>🛡️ ZTA-L9 PDP Cutoff</span>
+                        </div>
+
+                        <h3 style={{ fontSize: "22px", fontWeight: 800, color: "#ffffff", margin: "0 0 10px 0", fontFamily: "var(--font-headings)" }}>
+                          Official Placement Interview
+                        </h3>
+                        <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: "0 0 20px 0", lineHeight: 1.5 }}>
+                          Enter the official campus placement assessment for candidate hiring under {selectedCompanyData.name}. Verified by Layer 9 PDP CGPA eligibility check and proctored ZTA security matrix.
+                        </p>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12.5px", color: "#cbd5e1", background: "rgba(255,255,255,0.02)", padding: "16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={{ color: "#10b981", fontWeight: 800 }}>🛑 ZTA-L9 PDP</span> Central Cutoff Audit: CGPA &gt;= {selectedCompanyData.cutoff}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={{ color: "#10b981", fontWeight: 800 }}>🛡️ ZTA-L7/8</span> SOAR Firewall & Threat Shield: XSS / SQLi filtering
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={{ color: "#10b981", fontWeight: 800 }}>📷 ZTA Proctored</span> Biometric Presence & Signed Audit Scorecard
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <button
+                          className="glow-btn"
+                          style={{
+                            width: "100%",
+                            padding: "14px",
+                            fontSize: "14px",
+                            fontWeight: 700,
+                            background: "linear-gradient(135deg, #10b981, #059669)",
+                            color: "#ffffff",
+                            borderRadius: "12px",
+                            cursor: "pointer",
+                            transition: "all 0.2s"
+                          }}
+                          onClick={() => {
+                            setInterviewType("actual");
+                            sessionStorage.setItem("interviewType", "actual");
+                            setSelectedInterviewMode("actual");
+                          }}
+                        >
+                          Start Official Placement Interview →
+                        </button>
+                        <button
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#10b981",
+                            fontSize: "11px",
+                            cursor: "pointer",
+                            textAlign: "center",
+                            fontFamily: "var(--font-headings)"
+                          }}
+                          onClick={() => setIsZtaDrawerOpen(true)}
+                        >
+                          🛡️ Inspect ZTA Security Matrix for Official Drive
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* Company Details Tabs Section */}
+                <div className="glass-card" style={{ ...styles.card, padding: "28px", marginTop: "8px" }}>
+                  <div style={{ display: "flex", gap: "10px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "12px", marginBottom: "20px" }}>
+                    <button
+                      onClick={() => setActiveWorkspaceTab("pyqs")}
+                      style={{
+                        background: activeWorkspaceTab === "pyqs" ? "rgba(99, 102, 241, 0.15)" : "none",
+                        border: activeWorkspaceTab === "pyqs" ? "1px solid var(--color-primary)" : "1px solid transparent",
+                        color: activeWorkspaceTab === "pyqs" ? "#ffffff" : "var(--text-muted)",
+                        padding: "6px 14px",
+                        borderRadius: "15px",
+                        fontSize: "12.5px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontFamily: "var(--font-headings)",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      📚 Previous Year Questions (PYQs)
+                    </button>
+                    <button
+                      onClick={() => setActiveWorkspaceTab("requirements")}
+                      style={{
+                        background: activeWorkspaceTab === "requirements" ? "rgba(99, 102, 241, 0.15)" : "none",
+                        border: activeWorkspaceTab === "requirements" ? "1px solid var(--color-primary)" : "1px solid transparent",
+                        color: activeWorkspaceTab === "requirements" ? "#ffffff" : "var(--text-muted)",
+                        padding: "6px 14px",
+                        borderRadius: "15px",
+                        fontSize: "12.5px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontFamily: "var(--font-headings)",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      🏢 Company Requirements
+                    </button>
+                    <button
+                      onClick={() => setActiveWorkspaceTab("sandbox")}
+                      style={{
+                        background: activeWorkspaceTab === "sandbox" ? "rgba(99, 102, 241, 0.15)" : "none",
+                        border: activeWorkspaceTab === "sandbox" ? "1px solid var(--color-primary)" : "1px solid transparent",
+                        color: activeWorkspaceTab === "sandbox" ? "#ffffff" : "var(--text-muted)",
+                        padding: "6px 14px",
+                        borderRadius: "15px",
+                        fontSize: "12.5px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontFamily: "var(--font-headings)",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      🛡️ ZTA Security Guidelines
+                    </button>
+                  </div>
+
+                  {activeWorkspaceTab === "pyqs" && (
+                    <div className="fade-in-up">
+                      <h4 style={{ color: "#ffffff", fontSize: "15px", fontWeight: 800, margin: "0 0 12px 0", fontFamily: "var(--font-headings)" }}>
+                        📚 {selectedCompanyData.name} Past Placement Papers (ZTA Verification Signed)
+                      </h4>
+                      <p style={{ color: "var(--text-muted)", fontSize: "12.5px", margin: "0 0 16px 0", lineHeight: 1.4 }}>
+                        The following questions have been compiled from previous campus recruitment drives at RVCE for the target role: <strong>{selectedCompanyData.role}</strong>.
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                        {(MOCK_PYQS_MAP[selectedCompanyData.name.split(" ")[0].toLowerCase()] || [
+                          "Explain key system design components of a scaled distributed web service.",
+                          "Write a recursive function to check if a binary search tree is height-balanced.",
+                          "Describe transaction isolation levels and concurrency controls in modern databases."
+                        ]).map((q, idx) => (
+                          <div key={idx} style={{
+                            background: "rgba(255,255,255,0.02)",
+                            border: "1px solid rgba(255,255,255,0.05)",
+                            padding: "12px 16px",
+                            borderRadius: "10px",
+                            fontSize: "13px",
+                            lineHeight: 1.5,
+                            color: "#cbd5e1"
+                          }}>
+                            <span style={{ color: "var(--color-primary)", fontWeight: 800, marginRight: "8px" }}>Q{idx + 1}:</span>
+                            {q}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeWorkspaceTab === "requirements" && (
+                    <div className="fade-in-up" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                      <div>
+                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
+                          Hiring Company
+                        </strong>
+                        <span style={{ fontSize: "14px", color: "#ffffff", fontWeight: 700 }}>
+                          {selectedCompanyData.name} ({selectedCompanyData.domain})
+                        </span>
+                      </div>
+
+                      <div>
+                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
+                          Target Placement Role
+                        </strong>
+                        <span style={{ fontSize: "14px", color: "#a5b4fc", fontWeight: 700 }}>{selectedCompanyData.role}</span>
+                      </div>
+
+                      <div>
+                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
+                          Job Description
+                        </strong>
+                        <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
+                          {selectedCompanyData.description}
+                        </p>
+                      </div>
+
+                      <div>
+                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
+                          Required Technical Stack
+                        </strong>
+                        <span style={{ fontSize: "13.5px", color: "#38bdf8", fontWeight: 700 }}>
+                          {selectedCompanyData.skills}
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "20px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "14px" }}>
+                        <div style={{ flex: 1 }}>
+                          <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>
+                            Min eligibility cutoff
+                          </strong>
+                          <span style={{ fontSize: "14px", color: "#10b981", fontWeight: 800 }}>
+                            CGPA &gt;= {selectedCompanyData.cutoff}
+                          </span>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>
+                            Placement Paper Active
+                          </strong>
+                          <span style={{ fontSize: "13px", color: "#a5b4fc", fontWeight: 700 }}>
+                            {selectedCompanyData.pyq}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeWorkspaceTab === "sandbox" && (
+                    <div className="fade-in-up" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                      <h4 style={{ color: "#ffffff", fontSize: "15px", fontWeight: 800, margin: "0 0 4px 0", fontFamily: "var(--font-headings)" }}>
+                        🛡️ Zero Trust Architecture (ZTA) 13-Layer Compliance
+                      </h4>
+                      <p style={{ color: "var(--text-muted)", fontSize: "12.5px", margin: 0, lineHeight: 1.5 }}>
+                        This assessment environment is fully bound by our 13-layer Zero Trust Architecture to guarantee non-repudiation, identity verification, and anti-cheat compliance.
+                      </p>
+                      <ul style={{ color: "#cbd5e1", fontSize: "12.5px", margin: "8px 0", paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <li><strong>ZTA-L1/2 Infrastructure</strong>: Cryptographic session token verification & automated headless browser scanner.</li>
+                        <li><strong>ZTA-L4/5 Workload & Document</strong>: 10MB payload memory buffer cap & zero-retention 100ms resume parse/delete.</li>
+                        <li><strong>ZTA-L9 Access PDP</strong>: Placement Policy Decision Point cutoffs enforcing minimum academic criteria.</li>
+                        <li><strong>ZTA-L12/13 Compliance & AI</strong>: Demographic fairness shield (scrambled identity) and CV factuality grounding evaluation.</li>
+                      </ul>
+                      <div style={{
+                        background: "rgba(16, 185, 129, 0.05)",
+                        border: "1px solid rgba(16, 185, 129, 0.2)",
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        color: "#10b981",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        fontWeight: 700
+                      }}>
+                        <span>✓</span> ZTA Security Status: ALL 13 LAYERS ACTIVE & READY. Select an assessment mode above to proceed.
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            ) : (
+              /* ----------------------------------------------------
+                 NEXT PAGE: DEDICATED SETUP & RESUME UPLOAD PAGE FOR MOCK / ACTUAL
+                 ---------------------------------------------------- */
+              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                
+                {/* Back to Overview Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+                  <button
+                    onClick={() => setSelectedInterviewMode(null)}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.03)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "20px",
+                      color: "#cbd5e1",
+                      fontSize: "12.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: "8px 20px",
                       display: "flex",
                       alignItems: "center",
                       gap: "8px",
-                      fontWeight: 700
+                      fontFamily: "var(--font-headings)",
+                      transition: "all 0.2s"
+                    }}
+                    className="glow-btn"
+                  >
+                    ← Back to {selectedCompanyData.name} Overview
+                  </button>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "11px", color: "#10b981", background: "rgba(16, 185, 129, 0.1)", padding: "4px 10px", borderRadius: "14px", border: "1px solid rgba(16, 185, 129, 0.2)", fontWeight: 700 }}>
+                      🛡️ ZTA TOKEN BOUND
+                    </span>
+                    <div style={{
+                      background: selectedInterviewMode === "actual" ? "rgba(16, 185, 129, 0.1)" : "rgba(99, 102, 241, 0.1)",
+                      border: selectedInterviewMode === "actual" ? "1px solid #10b981" : "1px solid var(--color-primary)",
+                      color: selectedInterviewMode === "actual" ? "#10b981" : "#a5b4fc",
+                      padding: "6px 16px",
+                      borderRadius: "20px",
+                      fontSize: "12px",
+                      fontWeight: 800,
+                      fontFamily: "var(--font-headings)"
                     }}>
-                      <span>✓</span> Live sandbox status: READY. Upload resume on the left to start.
+                      {selectedInterviewMode === "actual" ? "🎓 PAGE: OFFICIAL GRADED ASSESSMENT SETUP" : "🧪 PAGE: PRACTICE MOCK INTERVIEW SETUP"}
                     </div>
                   </div>
-                )}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "32px", alignItems: "start" }}>
+                  
+                  {/* Left Column: Candidate Details & Resume Upload Form */}
+                  <div className="glass-card" style={{ ...styles.card, padding: "28px" }}>
+                    
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                      <span style={{
+                        fontSize: "12px",
+                        fontWeight: 800,
+                        padding: "4px 10px",
+                        borderRadius: "8px",
+                        background: selectedInterviewMode === "actual" ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                        color: selectedInterviewMode === "actual" ? "#10b981" : "#a5b4fc",
+                        border: selectedInterviewMode === "actual" ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(99, 102, 241, 0.3)"
+                      }}>
+                        {selectedInterviewMode === "actual" ? "OFFICIAL DRIVE" : "PRACTICE SANDBOX"}
+                      </span>
+                      <span style={{ color: "var(--text-muted)", fontSize: "12px" }}>Targeting: {selectedCompanyData.name}</span>
+                    </div>
+
+                    <h2 style={{ ...styles.title, fontSize: "22px", marginBottom: "8px" }}>
+                      {selectedInterviewMode === "actual" ? "Official Graded Placement Setup" : "Practice Mock Assessment Setup"}
+                    </h2>
+                    <p style={{ ...styles.sub, fontSize: "12.5px", marginBottom: "20px" }}>
+                      {selectedInterviewMode === "actual"
+                        ? `Entering official campus placement evaluation sandbox under ${selectedCompanyData.name} recruitment drive.`
+                        : `Entering practice assessment sandbox under ${selectedCompanyData.name} placement criteria.`}
+                    </p>
+
+                    {/* Field: Full Name */}
+                    <div style={styles.field}>
+                      <label style={styles.label}>
+                        Your Full Name
+                        <span className="badge badge-warning" style={{ fontSize: 9, padding: "2px 6px" }}>🔒 ZTA-L12 Bias Checked</span>
+                      </label>
+                      <input
+                        className="form-input"
+                        type="text"
+                        placeholder="e.g. Sneha Sharma"
+                        value={candidateName}
+                        maxLength={100}
+                        onChange={e => setCandidateName(sanitize(e.target.value))}
+                        disabled={busy}
+                      />
+                      <small style={styles.hint}>
+                        🔒 Scrambled under ZTA Layer 12. Evaluation models analyze only your content, never your name or identity.
+                      </small>
+                    </div>
+
+                    {/* Field: Job Role */}
+                    <div style={styles.field}>
+                      <label style={styles.label}>Target Job Role</label>
+                      <input
+                        className="form-input"
+                        type="text"
+                        placeholder="e.g. Senior Frontend Engineer"
+                        value={jobRole}
+                        maxLength={100}
+                        onChange={e => setJobRole(sanitize(e.target.value))}
+                        disabled={busy}
+                      />
+                    </div>
+
+                    {/* File Drop Zone */}
+                    <div
+                      style={{
+                        ...styles.dropZone,
+                        borderColor: drag ? "var(--color-primary)" : file ? "var(--color-success)" : "rgba(255, 255, 255, 0.15)",
+                        background:  drag ? "rgba(139, 92, 246, 0.05)" : file ? "rgba(16, 185, 129, 0.05)" : "rgba(255, 255, 255, 0.01)",
+                        boxShadow:   drag ? "var(--shadow-glow)" : file ? "var(--shadow-success-glow)" : "none",
+                      }}
+                      onClick={() => !busy && inputRef.current.click()}
+                      onDragOver={e => { e.preventDefault(); setDrag(true); }}
+                      onDragLeave={() => setDrag(false)}
+                      onDrop={onDrop}
+                    >
+                      <input
+                        ref={inputRef}
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        style={{ display: "none" }}
+                        onChange={e => handleFile(e.target.files[0])}
+                      />
+                      {file ? (
+                        <div style={styles.fileReady}>
+                          <span style={{ fontSize: 32 }}>📄</span>
+                          <div style={{ textAlign: "left", flex: 1 }}>
+                            <div style={styles.fileName}>{file.name}</div>
+                            <div style={styles.fileMeta}>{(file.size / 1024).toFixed(0)} KB · PDF Format Verified (ZTA-L5 Scrambled)</div>
+                          </div>
+                          <button
+                            style={styles.clearBtn}
+                            onClick={e => { e.stopPropagation(); setFile(null); }}
+                          >✕ Remove</button>
+                        </div>
+                      ) : (
+                        <div style={styles.dropPrompt}>
+                          <span style={{ fontSize: 28, color: "var(--text-muted)" }}>⬆️</span>
+                          <p style={{ margin: "10px 0 4px", fontWeight: 600, color: "var(--text-main)", fontSize: 14 }}>
+                            Drop your PDF resume here or <span style={{ color: "var(--color-primary)", textDecoration: "underline", cursor: "pointer" }}>browse files</span>
+                          </p>
+                          <small style={{ color: "var(--text-muted)", fontSize: 11 }}>Only PDF allowed · ZTA-L4 10MB Payload Buffer Protection</small>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interactive L9 PDP Eligibility check console */}
+                    {eligibilityCheck && (
+                      <div style={{
+                        background: "rgba(11, 15, 25, 0.8)",
+                        border: `1px solid ${eligibilityCheck === "passed" ? "rgba(16, 185, 129, 0.3)" : eligibilityCheck === "failed" ? "rgba(239, 68, 68, 0.3)" : "rgba(255, 255, 255, 0.1)"}`,
+                        borderRadius: "8px",
+                        padding: "14px",
+                        marginBottom: "20px",
+                        fontFamily: "monospace",
+                        fontSize: "11px"
+                      }}>
+                        <div style={{ color: eligibilityCheck === "passed" ? "#10b981" : eligibilityCheck === "failed" ? "#ef4444" : "#a5b4fc", fontWeight: 700, marginBottom: "8px" }}>
+                          {eligibilityCheck === "checking" && "⏳ ZTA-L9 PDP CUTOFF CHECKING:"}
+                          {eligibilityCheck === "passed" && "✅ ZTA-L9 PDP RECRUITMENT AUDIT PASSED:"}
+                          {eligibilityCheck === "failed" && "🛑 ZTA-L9 PDP RECRUITMENT AUDIT FAILED:"}
+                        </div>
+                        {eligibilityLogs.map((log, index) => (
+                          <div key={index} style={{ color: "#94a3b8", margin: "3px 0" }}>{log}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    {error && (
+                      <div style={styles.errorBox} className="badge-error">
+                        <span>⚠️</span> {error}
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <button
+                      className="glow-btn"
+                      style={{
+                        width: "100%",
+                        marginTop: 8,
+                        padding: "14px",
+                        fontSize: 15,
+                        background: (busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed") 
+                          ? "rgba(255, 255, 255, 0.05)" 
+                          : (selectedInterviewMode === "actual" 
+                              ? "linear-gradient(135deg, #10b981, #059669)" 
+                              : "linear-gradient(135deg, var(--color-primary), #6366f1)")
+                      }}
+                      onClick={handleSubmit}
+                      disabled={busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed"}
+                    >
+                      {status === "connecting"  && "Establishing ZTA secure session token…"}
+                      {status === "uploading"   && "Uploading & parsing resume (ZTA-L5)…"}
+                      {status === "checking_eligibility" && "Executing ZTA-L9 PDP Cutoff Check…"}
+                      {status === "generating"  && "AI generating questions (ZTA-L13)…"}
+                      {status === "idle"        && (selectedInterviewMode === "actual" ? "Start Official Placement Interview →" : "Start Practice Mock Interview →")}
+                      {status === "done"        && "ZTA Session Ready! Redirecting…"}</button>
+
+                    {/* Progress indicators when busy */}
+                    {busy && (
+                      <div style={styles.progressWrap}>
+                        {[
+                          { key: "connecting",  label: "1. ZTA-L1 Handshaking session token & fingerprint" },
+                          { key: "uploading",   label: "2. ZTA-L5 Extracting text blocks (Zero retention)" },
+                          { key: "checking_eligibility", label: "3. ZTA-L9 PDP Policy Decision Cutoff check" },
+                          { key: "generating",  label: "4. ZTA-L13 AI PYQ-aligned question generation" },
+                        ].map(step => {
+                          const isActive = status === step.key;
+                          return (
+                            <div key={step.key} style={{
+                              ...styles.progressStep,
+                              color: isActive ? "var(--color-primary)" : "var(--text-muted)",
+                              fontWeight: isActive ? 600 : 400,
+                            }}>
+                              {isActive ? (
+                                <span style={styles.miniSpinner} />
+                              ) : (
+                                <span style={{ fontSize: 10, marginRight: 8 }}>○</span>
+                              )}
+                              {step.label}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: ZTA Mode Overview & Live Security Matrix Widget */}
+                  <div className="glass-card" style={{ ...styles.card, padding: "28px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                      <h3 style={{ color: "#ffffff", fontSize: "16px", fontWeight: 800, margin: 0, fontFamily: "var(--font-headings)" }}>
+                        🛡️ ZTA Session & Compliance Audit
+                      </h3>
+                      <button
+                        style={{
+                          background: "rgba(99, 102, 241, 0.15)",
+                          border: "1px solid rgba(99, 102, 241, 0.3)",
+                          color: "#a5b4fc",
+                          borderRadius: "12px",
+                          padding: "4px 10px",
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          fontFamily: "var(--font-headings)"
+                        }}
+                        onClick={() => setIsZtaDrawerOpen(true)}
+                      >
+                        Inspect Drawer ↗
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                      <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>Active Mode</div>
+                        <div style={{ fontSize: "14px", fontWeight: 800, color: selectedInterviewMode === "actual" ? "#10b981" : "#a5b4fc" }}>
+                          {selectedInterviewMode === "actual" ? "🎓 Official Graded Assessment" : "🧪 Practice Mock Sandbox"}
+                        </div>
+                      </div>
+
+                      {/* ZTA Live 13-Layer Security Status Grid */}
+                      <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: "14px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <div style={{ fontSize: "11px", color: "var(--color-primary)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px", fontFamily: "var(--font-headings)" }}>
+                          ⚡ ZTA LIVE 13-LAYER MATRIX MONITORING
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "11.5px" }}>
+                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
+                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L1 Session:</span> Token Signed
+                          </div>
+                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
+                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L2 Sandbox:</span> Bot Safe
+                          </div>
+                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
+                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L5 Parsing:</span> 100ms Purge
+                          </div>
+                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
+                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L9 PDP:</span> CGPA Audit
+                          </div>
+                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
+                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L12 Bias:</span> Identity Shield
+                          </div>
+                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
+                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L13 AI:</span> Fact Grounded
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>Company & Placement Cutoff</div>
+                        <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#ffffff" }}>
+                          {selectedCompanyData.name} — Min CGPA &gt;= {selectedCompanyData.cutoff}
+                        </div>
+                      </div>
+
+                      <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>LLM Evaluation Engine</div>
+                        <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#38bdf8" }}>
+                          {selectedLLM.toUpperCase()} (ZTA-L12 Zero-Bias Enabled)
+                        </div>
+                      </div>
+
+                      <div style={{ background: "rgba(16, 185, 129, 0.05)", border: "1px solid rgba(16, 185, 129, 0.2)", padding: "12px", borderRadius: "10px", fontSize: "12px", color: "#cbd5e1" }}>
+                        🔒 <strong>Zero Trust Policy:</strong> Biometric facial tracking & audio anti-cheat algorithms active. Ensure your camera and mic are working before proceeding.
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
 
               </div>
+            )}
 
-            </div>
           </div>
         )}
 
-        {/* Collapsible ZTA Security Matrix Audit Drawer */}
+        {/* Glassmorphic Candidate Profile Modal */}
+      {isProfileOpen && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(3, 7, 18, 0.8)",
+          backdropFilter: "blur(12px)",
+          zIndex: 9999,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "20px"
+        }} onClick={() => setIsProfileOpen(false)}>
+          <div style={{
+            background: "rgba(17, 24, 39, 0.95)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: "24px",
+            width: "100%",
+            maxWidth: "550px",
+            padding: "36px",
+            boxShadow: "0 25px 60px rgba(0, 0, 0, 0.7)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "24px",
+            position: "relative",
+            textAlign: "left"
+          }} onClick={e => e.stopPropagation()}>
+            
+            {/* Close Button */}
+            <button 
+              onClick={() => setIsProfileOpen(false)}
+              style={{
+                position: "absolute",
+                top: "20px",
+                right: "20px",
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                fontSize: "20px",
+                cursor: "pointer"
+              }}
+            >✕</button>
+
+            {/* Profile Header */}
+            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+              <div style={{
+                width: "60px",
+                height: "60px",
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, var(--color-primary), #6366f1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "26px",
+                color: "#ffffff",
+                fontWeight: 800,
+                fontFamily: "var(--font-headings)"
+              }}>
+                {(sessionStorage.getItem("candidateName") || "C").charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h3 style={{ color: "#ffffff", fontSize: "20px", fontWeight: 800, margin: 0, fontFamily: "var(--font-headings)" }}>
+                  {sessionStorage.getItem("candidateName") || "Candidate"}
+                </h3>
+                <p style={{ color: "var(--text-muted)", fontSize: "13px", margin: "4px 0 0 0" }}>
+                  📧 {sessionStorage.getItem("candidateEmail") || "candidate@rvce.edu.in"}
+                </p>
+              </div>
+            </div>
+
+            {/* Placement Standing */}
+            <div style={{
+              background: "rgba(16, 185, 129, 0.04)",
+              border: "1px solid rgba(16, 185, 129, 0.15)",
+              padding: "16px",
+              borderRadius: "12px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}>
+              <div>
+                <div style={{ color: "#10b981", fontSize: "11px", fontWeight: 800, letterSpacing: "0.05em", fontFamily: "var(--font-headings)" }}>
+                  PLACEMENT CELL STATUS
+                </div>
+                <div style={{ color: "#ffffff", fontSize: "14px", fontWeight: 700, marginTop: "4px" }}>
+                  Eligible for Tier-1 Placement Drives
+                </div>
+              </div>
+              <span style={{
+                background: "rgba(16, 185, 129, 0.2)",
+                color: "#10b981",
+                border: "1px solid #10b981",
+                padding: "4px 10px",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: 800
+              }}>
+                CLEARED
+              </span>
+            </div>
+
+            {/* Assessment History Log */}
+            <div>
+              <h4 style={{ color: "#ffffff", fontSize: "14px", fontWeight: 700, marginBottom: "12px", fontFamily: "var(--font-headings)" }}>
+                📝 Placement Assessment History
+              </h4>
+              
+              {profileHistory.length === 0 ? (
+                <div style={{
+                  textAlign: "center",
+                  padding: "30px",
+                  background: "rgba(255,255,255,0.01)",
+                  border: "1px dashed rgba(255,255,255,0.06)",
+                  borderRadius: "12px",
+                  color: "var(--text-muted)",
+                  fontSize: "13px"
+                }}>
+                  No assessments completed yet. Start an interview from the catalog list!
+                </div>
+              ) : (
+                <div style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  maxHeight: "220px",
+                  overflowY: "auto",
+                  paddingRight: "4px"
+                }}>
+                  {profileHistory.map((item, idx) => (
+                    <div key={idx} style={{
+                      background: "rgba(255,255,255,0.02)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      borderRadius: "10px",
+                      padding: "12px 16px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <strong style={{ color: "#ffffff", fontSize: "13.5px" }}>{item.companyName}</strong>
+                          <span style={{
+                            background: item.interviewType === "Official Graded" ? "rgba(16, 185, 129, 0.1)" : "rgba(99, 102, 241, 0.1)",
+                            color: item.interviewType === "Official Graded" ? "#10b981" : "#a5b4fc",
+                            fontSize: "10px",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontWeight: 700
+                          }}>
+                            {item.interviewType}
+                          </span>
+                        </div>
+                        <div style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "4px" }}>
+                          {item.jobRole} · {item.date}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: "15px", fontWeight: 800, color: "var(--color-primary)", fontFamily: "var(--font-headings)" }}>
+                          {item.score}/10
+                        </div>
+                        <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                          {item.grade}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Close Button Footer */}
+            <button
+              className="glow-btn"
+              style={{
+                width: "100%",
+                padding: "12px",
+                fontSize: "13px",
+                fontWeight: "700",
+                background: "linear-gradient(135deg, var(--color-primary), #6366f1)"
+              }}
+              onClick={() => setIsProfileOpen(false)}
+            >
+              Close Profile
+            </button>
+
+          </div>
+        </div>
+      )}
+
+      {/* Collapsible ZTA Security Matrix Audit Drawer */}
         {isZtaDrawerOpen && (
           <div style={{
             position: "fixed",

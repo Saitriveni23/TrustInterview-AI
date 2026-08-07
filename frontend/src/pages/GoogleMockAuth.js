@@ -1,26 +1,47 @@
 import React, { useState } from "react";
 
-const DEFAULT_ACCOUNTS = [
-  { name: "Sneha Sharma", email: "sneha.sharma@rvce.edu.in", avatar: "👩‍💻" },
-  { name: "Pawan Kumar", email: "pawan.kumar@rvce.edu.in", avatar: "👨‍💻" },
-  { name: "Ananth Gopal", email: "ananth.gopal@rvce.edu.in", avatar: "🧑‍💻" },
-  { name: "Priya Nair", email: "priya.nair@rvce.edu.in", avatar: "👩‍🔬" },
-];
-
 export default function GoogleMockAuth() {
-  const [accounts, setAccounts] = useState(() => {
-    const saved = localStorage.getItem("mockGoogleAccounts");
+  const [userAccount, setUserAccount] = useState(() => {
+    // 1. Check URL parameters passed from login page
+    const params = new URLSearchParams(window.location.search);
+    const urlEmail = params.get("email");
+    const urlName = params.get("name");
+
+    if (urlEmail && urlEmail.trim()) {
+      const derivedName = urlName && urlName.trim() ? urlName.trim() :
+        urlEmail.split("@")[0]
+          .split(/[._-]+/)
+          .map(p => p.charAt(0).toUpperCase() + p.slice(1))
+          .join(" ");
+      return { name: derivedName, email: urlEmail.trim(), avatar: "👤" };
+    }
+
+    // 2. Check saved user account specifically linked to this browser session
+    const saved = localStorage.getItem("userGoogleAccount");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email) return parsed;
       } catch (e) {
-        return DEFAULT_ACCOUNTS;
+        // ignore error
       }
     }
-    return DEFAULT_ACCOUNTS;
+
+    // 3. Check sessionStorage candidate credentials
+    const candidateEmail = sessionStorage.getItem("candidateEmail");
+    const candidateName = sessionStorage.getItem("candidateName");
+    if (candidateEmail && candidateEmail.trim()) {
+      return {
+        name: candidateName && candidateName.trim() ? candidateName.trim() : "Candidate Account",
+        email: candidateEmail.trim(),
+        avatar: "👤"
+      };
+    }
+
+    return null;
   });
 
-  const [view, setView] = useState("chooser"); // "chooser" or "add"
+  const [view, setView] = useState(() => (userAccount ? "chooser" : "add"));
   const [customEmail, setCustomEmail] = useState("");
   const [customName, setCustomName] = useState("");
   const [error, setError] = useState("");
@@ -43,7 +64,7 @@ export default function GoogleMockAuth() {
     setError("");
 
     if (!customEmail.trim()) {
-      setError("Enter an email or phone number");
+      setError("Enter a valid Google email address");
       return;
     }
 
@@ -52,7 +73,6 @@ export default function GoogleMockAuth() {
       return;
     }
 
-    // Determine name from email prefix
     const derivedName = customName.trim() || 
       customEmail.split("@")[0]
         .split(/[._-]+/)
@@ -65,14 +85,10 @@ export default function GoogleMockAuth() {
       avatar: "👤"
     };
 
-    // Prevent duplicate emails in listing
-    const filtered = accounts.filter(acc => acc.email.toLowerCase() !== newAccount.email.toLowerCase());
-    const updated = [newAccount, ...filtered];
-    
-    setAccounts(updated);
-    localStorage.setItem("mockGoogleAccounts", JSON.stringify(updated));
+    setUserAccount(newAccount);
+    localStorage.setItem("userGoogleAccount", JSON.stringify(newAccount));
 
-    // Sign in immediately
+    // Authenticate immediately
     handleSelect(newAccount);
   };
 
@@ -102,44 +118,77 @@ export default function GoogleMockAuth() {
           </svg>
           <h2 style={styles.title}>Sign in with Google</h2>
           <p style={styles.subtitle}>to continue to <strong>TrustInterview AI</strong></p>
+          
+          <div style={{
+            background: "rgba(16, 185, 129, 0.08)",
+            border: "1px solid rgba(16, 185, 129, 0.2)",
+            borderRadius: "8px",
+            padding: "8px 12px",
+            fontSize: "11px",
+            color: "#10b981",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
+          }}>
+            <span>🔒</span> ZTA-L12 Demographic Bias Shield Active (Anonymized Authentication)
+          </div>
         </div>
 
-        {view === "chooser" ? (
+        {view === "chooser" && userAccount ? (
           /* ====================================================
-             VIEW 1: ACCOUNTS CHOOSER LIST
+             VIEW 1: SINGLE USER GOOGLE ACCOUNT CARD
              ==================================================== */
           <div style={styles.contentArea}>
             <div style={styles.accountsList}>
-              {accounts.map((acc, index) => (
-                <div
-                  key={index}
-                  onClick={() => handleSelect(acc)}
-                  style={styles.accountRow}
-                  className="campaign-card-interactive"
-                >
-                  <span style={styles.avatar}>{acc.avatar}</span>
-                  <div style={styles.accDetails}>
-                    <div style={styles.name}>{acc.name}</div>
-                    <div style={styles.email}>{acc.email}</div>
+              <div
+                onClick={() => handleSelect(userAccount)}
+                style={{ ...styles.accountRow, border: "1px solid rgba(16, 185, 129, 0.3)", background: "rgba(16, 185, 129, 0.05)" }}
+                className="campaign-card-interactive"
+              >
+                <span style={styles.avatar}>{userAccount.avatar}</span>
+                <div style={styles.accDetails}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={styles.name}>{userAccount.name}</div>
+                    <span style={{ fontSize: "9px", color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                      🔒 Linked Google Account
+                    </span>
                   </div>
+                  <div style={styles.email}>{userAccount.email}</div>
                 </div>
-              ))}
+              </div>
 
-              {/* Use another account option */}
+              {/* Action to continue directly */}
+              <button
+                className="glow-btn"
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  fontSize: "13.5px",
+                  fontWeight: 700,
+                  background: "linear-gradient(135deg, var(--color-primary), #6366f1)",
+                  marginTop: "6px"
+                }}
+                onClick={() => handleSelect(userAccount)}
+              >
+                Continue as {userAccount.name.split(" ")[0]} →
+              </button>
+
+              {/* Option to switch or link another Google Account */}
               <div
                 onClick={() => setView("add")}
-                style={{ ...styles.accountRow, borderStyle: "dashed" }}
+                style={{ ...styles.accountRow, borderStyle: "dashed", marginTop: "10px" }}
                 className="campaign-card-interactive"
               >
                 <span style={styles.avatar}>➕</span>
                 <div style={styles.accDetails}>
-                  <div style={{ ...styles.name, color: "var(--color-primary)" }}>Use another account</div>
-                  <div style={styles.email}>Sign in with a new email address</div>
+                  <div style={{ ...styles.name, color: "var(--color-primary)" }}>Use another Google Account</div>
+                  <div style={styles.email}>Sign in with a different email address</div>
                 </div>
               </div>
             </div>
 
-            {/* Back/Close controls at the bottom */}
+            {/* Cancel controls */}
             <div style={styles.bottomControls}>
               <button onClick={() => window.close()} style={styles.cancelBtn}>
                 ✕ Cancel & Close Window
@@ -148,7 +197,7 @@ export default function GoogleMockAuth() {
           </div>
         ) : (
           /* ====================================================
-             VIEW 2: ADD CUSTOM EMAIL FORM
+             VIEW 2: LINK YOUR SPECIFIC GOOGLE ACCOUNT FORM
              ==================================================== */
           <form onSubmit={handleAddAccount} style={styles.form}>
             {error && (
@@ -158,16 +207,16 @@ export default function GoogleMockAuth() {
             )}
 
             <div style={styles.field}>
-              <label style={styles.label}>Email or phone</label>
+              <label style={styles.label}>Your Google Email address</label>
               <input
                 type="email"
                 className="form-input"
-                placeholder="Enter your device or personal email"
+                placeholder="e.g. yourname@gmail.com or @rvce.edu.in"
                 value={customEmail}
                 onChange={(e) => setCustomEmail(e.target.value)}
                 autoFocus
               />
-              <span style={styles.hint}>Google will remember this email for future sign-ins.</span>
+              <span style={styles.hint}>Sign in to link only your personal Google Account to this session.</span>
             </div>
 
             <div style={styles.field}>
@@ -182,25 +231,33 @@ export default function GoogleMockAuth() {
             </div>
 
             <div style={styles.formActions}>
-              <button
-                type="button"
-                onClick={() => {
-                  setView("chooser");
-                  setError("");
-                }}
-                style={styles.backBtn}
-              >
-                Back to chooser
+              {userAccount && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView("chooser");
+                    setError("");
+                  }}
+                  style={styles.backBtn}
+                >
+                  Back to active account
+                </button>
+              )}
+              <button type="submit" className="glow-btn" style={{ ...styles.nextBtn, width: userAccount ? "auto" : "100%" }}>
+                Sign In & Connect Account →
               </button>
-              <button type="submit" className="glow-btn" style={styles.nextBtn}>
-                Next
+            </div>
+
+            <div style={{ ...styles.bottomControls, marginTop: "16px" }}>
+              <button type="button" onClick={() => window.close()} style={styles.cancelBtn}>
+                ✕ Cancel & Close Window
               </button>
             </div>
           </form>
         )}
 
         <footer style={styles.footer}>
-          <span>To continue, Google will share your name and email address with RVCE Placements Cell.</span>
+          <span>Google will share your verified name and email address with RVCE Placements Cell.</span>
         </footer>
       </div>
     </div>
@@ -257,7 +314,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    maxHeight: "260px",
+    maxHeight: "280px",
     overflowY: "auto",
     paddingRight: "4px",
   },
@@ -358,7 +415,7 @@ const styles = {
     cursor: "pointer",
   },
   nextBtn: {
-    padding: "8px 24px",
+    padding: "10px 24px",
     fontSize: "13px",
     fontWeight: "700",
     background: "linear-gradient(135deg, var(--color-primary), #6366f1)",

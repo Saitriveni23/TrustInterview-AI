@@ -14,6 +14,43 @@ export default function Results() {
   const companyName = sessionStorage.getItem("companyName") || "";
   const [tab, setTab] = useState(0);
 
+  React.useEffect(() => {
+    if (data) {
+      const { answers, jobRole } = data;
+      const safe = Array.isArray(answers) ? answers : [];
+      const avg = safe.length ? (safe.reduce((sum, a) => sum + (a.score || 0), 0) / safe.length).toFixed(1) : 0;
+      const grade = avg >= 9 ? "Exceptional" : avg >= 7 ? "Good" : avg >= 5 ? "Average" : avg >= 3 ? "Weak" : "Poor";
+      const interviewType = sessionStorage.getItem("interviewType") || "mock";
+
+      const historyRaw = localStorage.getItem("candidateAssessmentHistory");
+      let historyList = [];
+      if (historyRaw) {
+        try {
+          historyList = JSON.parse(historyRaw);
+        } catch (e) {
+          historyList = [];
+        }
+      }
+
+      const sessionKey = `${companyName}-${interviewType}-${avg}`;
+      const alreadyLogged = historyList.some(item => item.sessionKey === sessionKey);
+
+      if (!alreadyLogged) {
+        const newRecord = {
+          sessionKey,
+          companyName: companyName || "General",
+          interviewType: interviewType === "actual" ? "Official Graded" : "Practice Mock",
+          score: avg,
+          grade,
+          date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          jobRole: jobRole || "AI Specialist"
+        };
+        const updatedHistory = [newRecord, ...historyList];
+        localStorage.setItem("candidateAssessmentHistory", JSON.stringify(updatedHistory));
+      }
+    }
+  }, [data, companyName]);
+
   if (!data) {
     return (
       <div style={s.noResultsWrap}>

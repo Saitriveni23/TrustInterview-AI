@@ -30,6 +30,8 @@ const BASE_BIAS_CATEGORIES = [
   { name: "Political Views",           words: ["political", "politics", "party", "vote"] },
   { name: "Appearance & Accent",       words: ["accent", "appearance", "looks", "height", "weight"] },
   { name: "Pregnancy Status",          words: ["pregnant", "pregnancy", "maternity", "paternity"] },
+  { name: "Institutional Prestige",    words: ["tier 1 college", "ivy league", "elite college", "pedigree", "reputed institute"] },
+  { name: "Socioeconomic & Location",  words: ["zipcode", "neighborhood", "salary history", "previous pay", "income background"] },
 ];
 
 function buildBiasChecker(candidateName) {
