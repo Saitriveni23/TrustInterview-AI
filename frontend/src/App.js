@@ -4,7 +4,7 @@ import Upload         from "./pages/Upload";
 import Interview      from "./pages/Interview";
 import Results        from "./pages/Results";
 import Login          from "./pages/Login";
-import GoogleMockAuth from "./pages/GoogleMockAuth";
+import AuthCallback   from "./pages/AuthCallback";
 
 function ProtectedRoute({ children, requiredKey }) {
   const hasEmail = sessionStorage.getItem("candidateEmail");
@@ -28,7 +28,7 @@ export default function App() {
     <BrowserRouter basename={process.env.PUBLIC_URL}>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/google-mock-auth" element={<GoogleMockAuth />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         
         <Route path="/" element={
           <ProtectedRoute>

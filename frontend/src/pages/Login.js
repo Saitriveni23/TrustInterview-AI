@@ -63,19 +63,11 @@ export default function Login() {
     const height = 550;
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
-    
+
     // Basename compatibility fallback
     const basename = process.env.PUBLIC_URL || "/INTERVIEW-BOT";
-    const activeEmail = email.trim() || sessionStorage.getItem("candidateEmail") || "";
-    const activeName = name.trim() || sessionStorage.getItem("candidateName") || "";
-    
-    const params = new URLSearchParams();
-    if (activeEmail) params.set("email", activeEmail);
-    if (activeName) params.set("name", activeName);
-    const queryString = params.toString() ? `?${params.toString()}` : "";
-    
-    const authUrl = `${window.location.origin}${basename}/google-mock-auth${queryString}`;
-    
+    const authUrl = `${window.location.origin}${basename}/google-mock-auth`;
+
     window.open(
       authUrl,
       "GoogleMockAuth",
@@ -91,7 +83,7 @@ export default function Login() {
 
       <main style={styles.mainContainer}>
         <div className="glass-card fade-in-up" style={styles.card}>
-          
+
           {/* Header branding */}
           <div style={styles.brandHeader}>
             <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
