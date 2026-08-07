@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 export default function Login() {
@@ -11,20 +11,6 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  // Setup messaging listener for Google auth popup
-  useEffect(() => {
-    const handleGoogleAuth = (event) => {
-      if (event.data && event.data.type === "MOCK_GOOGLE_AUTH_SUCCESS") {
-        const { email: googleEmail, name: googleName } = event.data;
-        sessionStorage.setItem("candidateEmail", googleEmail);
-        sessionStorage.setItem("candidateName", googleName);
-        navigate("/");
-      }
-    };
-    window.addEventListener("message", handleGoogleAuth);
-    return () => window.removeEventListener("message", handleGoogleAuth);
-  }, [navigate]);
 
   const handleCredentialsSubmit = (e) => {
     e.preventDefault();
@@ -55,21 +41,9 @@ export default function Login() {
   };
 
   const handleGoogleSignInClick = () => {
-    // Open centered popup window
-    const width = 450;
-    const height = 550;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-    
-    // Basename compatibility fallback
-    const basename = process.env.PUBLIC_URL || "/INTERVIEW-BOT";
-    const authUrl = `${window.location.origin}${basename}/google-mock-auth`;
-    
-    window.open(
-      authUrl,
-      "GoogleMockAuth",
-      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
-    );
+    // Redirect to backend Google OAuth endpoint
+    const API = process.env.REACT_APP_API_URL || "http://localhost:5001";
+    window.location.href = `${API}/api/auth/google`;
   };
 
   return (

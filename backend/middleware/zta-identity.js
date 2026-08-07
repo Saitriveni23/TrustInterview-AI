@@ -12,7 +12,13 @@ const crypto = require("crypto");
 const activeSessions = new Map();
 
 // Paths that don't need a session token yet (bootstrap flow)
-const PUBLIC_PATHS = ["/api/health", "/api/auth/session", "/api/zta-status"];
+const PUBLIC_PATHS = [
+  "/api/health", 
+  "/api/auth/session", 
+  "/api/zta-status",
+  "/api/auth/google",
+  "/api/auth/google/callback"
+];
 
 /**
  * generateSession()
