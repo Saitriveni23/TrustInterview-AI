@@ -489,6 +489,31 @@ export default function Upload() {
             >
               💼 Recruiter Login
             </button>
+            <button
+              style={{
+                background: "rgba(244, 63, 94, 0.1)",
+                border: "1px solid rgba(244, 63, 94, 0.3)",
+                borderRadius: "20px",
+                color: "#f43f5e",
+                fontSize: "11.5px",
+                fontWeight: "700",
+                padding: "8px 16px",
+                cursor: "pointer",
+                fontFamily: "var(--font-headings)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s"
+              }}
+              onClick={() => {
+                sessionStorage.clear();
+                localStorage.removeItem("userGoogleAccount");
+                navigate("/login");
+              }}
+              className="glow-btn"
+            >
+              🚪 Logout
+            </button>
           </div>
         </div>
 
@@ -1416,7 +1441,7 @@ export default function Upload() {
           </div>
         )}
 
-        {/* Glassmorphic Candidate Profile Modal */}
+      {/* Candidate Profile Modal (GitHub-Inspired Design) */}
       {isProfileOpen && (
         <div style={{
           position: "fixed",
@@ -1424,186 +1449,315 @@ export default function Upload() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: "rgba(3, 7, 18, 0.8)",
-          backdropFilter: "blur(12px)",
-          zIndex: 9999,
+          background: "rgba(1, 4, 9, 0.8)",
+          backdropFilter: "blur(8px)",
+          zIndex: 1000,
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
           padding: "20px"
         }} onClick={() => setIsProfileOpen(false)}>
+          
           <div style={{
-            background: "rgba(17, 24, 39, 0.95)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            borderRadius: "24px",
+            background: "#0d1117",
+            border: "1px solid #30363d",
+            borderRadius: "16px",
             width: "100%",
-            maxWidth: "550px",
-            padding: "36px",
-            boxShadow: "0 25px 60px rgba(0, 0, 0, 0.7)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "24px",
+            maxWidth: "620px",
+            padding: "0",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.85)",
+            overflow: "hidden",
             position: "relative",
-            textAlign: "left"
+            textAlign: "left",
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif"
           }} onClick={e => e.stopPropagation()}>
             
-            {/* Close Button */}
-            <button 
-              onClick={() => setIsProfileOpen(false)}
-              style={{
-                position: "absolute",
-                top: "20px",
-                right: "20px",
-                background: "none",
-                border: "none",
-                color: "var(--text-muted)",
-                fontSize: "20px",
-                cursor: "pointer"
-              }}
-            >✕</button>
-
-            {/* Profile Header */}
-            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-              <div style={{
-                width: "60px",
-                height: "60px",
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, var(--color-primary), #6366f1)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "26px",
-                color: "#ffffff",
-                fontWeight: 800,
-                fontFamily: "var(--font-headings)"
-              }}>
-                {(sessionStorage.getItem("candidateName") || "C").charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <h3 style={{ color: "#ffffff", fontSize: "20px", fontWeight: 800, margin: 0, fontFamily: "var(--font-headings)" }}>
-                  {sessionStorage.getItem("candidateName") || "Candidate"}
-                </h3>
-                <p style={{ color: "var(--text-muted)", fontSize: "13px", margin: "4px 0 0 0" }}>
-                  📧 {sessionStorage.getItem("candidateEmail") || "candidate@rvce.edu.in"}
-                </p>
-              </div>
-            </div>
-
-            {/* Placement Standing */}
+            {/* GitHub Header Top Bar */}
             <div style={{
-              background: "rgba(16, 185, 129, 0.04)",
-              border: "1px solid rgba(16, 185, 129, 0.15)",
-              padding: "16px",
-              borderRadius: "12px",
+              background: "#161b22",
+              borderBottom: "1px solid #30363d",
+              padding: "16px 24px",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center"
             }}>
-              <div>
-                <div style={{ color: "#10b981", fontSize: "11px", fontWeight: 800, letterSpacing: "0.05em", fontFamily: "var(--font-headings)" }}>
-                  PLACEMENT CELL STATUS
-                </div>
-                <div style={{ color: "#ffffff", fontSize: "14px", fontWeight: 700, marginTop: "4px" }}>
-                  Eligible for Tier-1 Placement Drives
-                </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <svg height="20" width="20" viewBox="0 0 16 16" fill="#f0f6fc">
+                  <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z" />
+                </svg>
+                <span style={{ color: "#f0f6fc", fontSize: "14px", fontWeight: 600 }}>Candidate Profile Overview</span>
               </div>
-              <span style={{
-                background: "rgba(16, 185, 129, 0.2)",
-                color: "#10b981",
-                border: "1px solid #10b981",
-                padding: "4px 10px",
-                borderRadius: "20px",
-                fontSize: "11px",
-                fontWeight: 800
-              }}>
-                CLEARED
-              </span>
+              <button 
+                onClick={() => setIsProfileOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#8b949e",
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  borderRadius: "6px",
+                  lineHeight: 1
+                }}
+              >✕</button>
             </div>
 
-            {/* Assessment History Log */}
-            <div>
-              <h4 style={{ color: "#ffffff", fontSize: "14px", fontWeight: 700, marginBottom: "12px", fontFamily: "var(--font-headings)" }}>
-                📝 Placement Assessment History
-              </h4>
+            {/* Profile Main Content Body */}
+            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
               
-              {profileHistory.length === 0 ? (
-                <div style={{
-                  textAlign: "center",
-                  padding: "30px",
-                  background: "rgba(255,255,255,0.01)",
-                  border: "1px dashed rgba(255,255,255,0.06)",
-                  borderRadius: "12px",
-                  color: "var(--text-muted)",
-                  fontSize: "13px"
-                }}>
-                  No assessments completed yet. Start an interview from the catalog list!
+              {/* GitHub User Profile Header Card */}
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "16px",
+                background: "#161b22",
+                border: "1px solid #30363d",
+                padding: "20px",
+                borderRadius: "12px"
+              }}>
+                <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                  <div style={{
+                    width: "64px",
+                    height: "64px",
+                    borderRadius: "50%",
+                    border: "2px solid #30363d",
+                    background: "linear-gradient(135deg, #6366f1, #3b82f6)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "26px",
+                    color: "#ffffff",
+                    fontWeight: 700,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+                  }}>
+                    {(sessionStorage.getItem("candidateName") || "C").charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h2 style={{ color: "#f0f6fc", fontSize: "20px", fontWeight: 700, margin: 0, lineHeight: 1.2 }}>
+                      {sessionStorage.getItem("candidateName") || "Sai triveni b"}
+                    </h2>
+                    <div style={{ color: "#8b949e", fontSize: "13.5px", marginTop: "4px" }}>
+                      @{sessionStorage.getItem("candidateEmail") ? sessionStorage.getItem("candidateEmail").split("@")[0] : "saitriveni23"}
+                    </div>
+                    <div style={{ color: "#8b949e", fontSize: "12px", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>✉️</span> {sessionStorage.getItem("candidateEmail") || "triveni238@gmail.com"}
+                    </div>
+                  </div>
                 </div>
-              ) : (
+
                 <div style={{
                   display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                  maxHeight: "220px",
-                  overflowY: "auto",
-                  paddingRight: "4px"
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "#21262d",
+                  border: "1px solid #30363d",
+                  padding: "6px 12px",
+                  borderRadius: "20px",
+                  color: "#c9d1d9",
+                  fontSize: "12px",
+                  fontWeight: 600
                 }}>
-                  {profileHistory.map((item, idx) => (
-                    <div key={idx} style={{
-                      background: "rgba(255,255,255,0.02)",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                      borderRadius: "10px",
-                      padding: "12px 16px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center"
-                    }}>
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <strong style={{ color: "#ffffff", fontSize: "13.5px" }}>{item.companyName}</strong>
-                          <span style={{
-                            background: item.interviewType === "Official Graded" ? "rgba(16, 185, 129, 0.1)" : "rgba(99, 102, 241, 0.1)",
-                            color: item.interviewType === "Official Graded" ? "#10b981" : "#a5b4fc",
-                            fontSize: "10px",
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                            fontWeight: 700
-                          }}>
-                            {item.interviewType}
-                          </span>
-                        </div>
-                        <div style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "4px" }}>
-                          {item.jobRole} · {item.date}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: "15px", fontWeight: 800, color: "var(--color-primary)", fontFamily: "var(--font-headings)" }}>
-                          {item.score}/10
-                        </div>
-                        <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                          {item.grade}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  <span style={{ color: "#3fb950" }}>●</span> Placement Active
                 </div>
-              )}
+              </div>
+
+              {/* GitHub Menu Item Grid / Tabs */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "10px"
+              }}>
+                <div style={{
+                  background: "#161b22",
+                  border: "1px solid #30363d",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  color: "#c9d1d9",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}>
+                  <span style={{ color: "#58a6ff" }}>📦</span> Placement Drives
+                </div>
+                <div style={{
+                  background: "#161b22",
+                  border: "1px solid #30363d",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  color: "#c9d1d9",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}>
+                  <span style={{ color: "#d29922" }}>⭐</span> Saved PYQs
+                </div>
+                <div style={{
+                  background: "#161b22",
+                  border: "1px solid #30363d",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  color: "#c9d1d9",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}>
+                  <span style={{ color: "#238636" }}>🛡️</span> ZTA-L12 Shield
+                </div>
+              </div>
+
+              {/* Placement Standing Banner */}
+              <div style={{
+                background: "rgba(57, 211, 83, 0.08)",
+                border: "1px solid rgba(57, 211, 83, 0.25)",
+                padding: "14px 18px",
+                borderRadius: "10px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }}>
+                <div>
+                  <div style={{ color: "#3fb950", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    PLACEMENT CELL STANDING
+                  </div>
+                  <div style={{ color: "#f0f6fc", fontSize: "13.5px", fontWeight: 600, marginTop: "2px" }}>
+                    Eligible for Tier-1 Placement Drives
+                  </div>
+                </div>
+                <span style={{
+                  background: "#238636",
+                  color: "#ffffff",
+                  padding: "3px 10px",
+                  borderRadius: "12px",
+                  fontSize: "11px",
+                  fontWeight: 700
+                }}>
+                  CLEARED
+                </span>
+              </div>
+
+              {/* Assessment History Activity Section */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                  <h4 style={{ color: "#f0f6fc", fontSize: "13.5px", fontWeight: 600, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>📝</span> Placement Assessment History
+                  </h4>
+                  <span style={{ fontSize: "11px", color: "#8b949e" }}>{profileHistory.length} Recorded</span>
+                </div>
+
+                {profileHistory.length === 0 ? (
+                  <div style={{
+                    textAlign: "center",
+                    padding: "24px",
+                    background: "#161b22",
+                    border: "1px dashed #30363d",
+                    borderRadius: "10px",
+                    color: "#8b949e",
+                    fontSize: "12.5px"
+                  }}>
+                    No placement assessments completed yet. Start an assessment from the catalog!
+                  </div>
+                ) : (
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    maxHeight: "180px",
+                    overflowY: "auto",
+                    paddingRight: "4px"
+                  }}>
+                    {profileHistory.map((item, idx) => (
+                      <div key={idx} style={{
+                        background: "#161b22",
+                        border: "1px solid #30363d",
+                        borderRadius: "8px",
+                        padding: "12px 14px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <strong style={{ color: "#58a6ff", fontSize: "13.5px" }}>{item.companyName}</strong>
+                            <span style={{
+                              background: item.interviewType === "Official Graded" ? "rgba(35, 134, 54, 0.15)" : "rgba(88, 166, 255, 0.15)",
+                              color: item.interviewType === "Official Graded" ? "#3fb950" : "#58a6ff",
+                              border: item.interviewType === "Official Graded" ? "1px solid rgba(63, 185, 80, 0.3)" : "1px solid rgba(88, 166, 255, 0.3)",
+                              fontSize: "10px",
+                              padding: "1px 6px",
+                              borderRadius: "10px",
+                              fontWeight: 600
+                            }}>
+                              {item.interviewType}
+                            </span>
+                          </div>
+                          <div style={{ color: "#8b949e", fontSize: "11px", marginTop: "3px" }}>
+                            {item.jobRole} · {item.date}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: "14px", fontWeight: 700, color: "#f0f6fc" }}>
+                            {item.score}/10
+                          </div>
+                          <div style={{ fontSize: "10.5px", color: item.score >= 7 ? "#3fb950" : "#f85149" }}>
+                            {item.grade}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* GitHub Footer Action Controls */}
+              <div style={{ display: "flex", gap: "10px", paddingTop: "8px" }}>
+                <button
+                  style={{
+                    flex: 1,
+                    background: "#21262d",
+                    border: "1px solid #30363d",
+                    color: "#f0f6fc",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                  onClick={() => setIsProfileOpen(false)}
+                >
+                  Close Overview
+                </button>
+                <button
+                  style={{
+                    background: "rgba(248, 81, 73, 0.1)",
+                    border: "1px solid rgba(248, 81, 73, 0.4)",
+                    color: "#f85149",
+                    padding: "10px 18px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px"
+                  }}
+                  onClick={() => {
+                    sessionStorage.clear();
+                    window.location.reload();
+                  }}
+                >
+                  <span>🚪</span> Sign out
+                </button>
+              </div>
+
             </div>
-
-            {/* Close Button Footer */}
-            <button
-              className="glow-btn"
-              style={{
-                width: "100%",
-                padding: "12px",
-                fontSize: "13px",
-                fontWeight: "700",
-                background: "linear-gradient(135deg, var(--color-primary), #6366f1)"
-              }}
-              onClick={() => setIsProfileOpen(false)}
-            >
-              Close Profile
-            </button>
-
           </div>
         </div>
       )}

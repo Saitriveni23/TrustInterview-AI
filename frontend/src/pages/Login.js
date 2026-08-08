@@ -4,9 +4,10 @@ import { useNavigate } from "react-router-dom";
 export default function Login() {
   const navigate = useNavigate();
 
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(true); // Default to Register Profile
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,6 +20,9 @@ export default function Login() {
         const { email: googleEmail, name: googleName } = event.data;
         sessionStorage.setItem("candidateEmail", googleEmail);
         sessionStorage.setItem("candidateName", googleName);
+        sessionStorage.setItem("ztaBiasShieldActive", "true");
+        sessionStorage.setItem("ztaAnonymizedHash", Math.random().toString(36).substring(2, 10));
+        sessionStorage.setItem("ztaDemographicProtection", "Active - 12 Categories Redacted");
         navigate("/");
       }
     };
@@ -30,43 +34,100 @@ export default function Login() {
     e.preventDefault();
     setError("");
 
-    if (!email || !password || (isSignUp && !name)) {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    if (!cleanEmail || !cleanPassword || (isSignUp && !name.trim())) {
       setError("Please fill in all required fields.");
       return;
     }
 
-    if (!email.includes("@")) {
+    if (!cleanEmail.includes("@")) {
       setError("Please enter a valid email address.");
       return;
     }
 
+    if (cleanPassword.length < 6) {
+      setError("❌ Password must be at least 6 characters long.");
+      return;
+    }
+
+    // Retrieve registered user database from localStorage
+    let registeredUsers = [];
+    try {
+      const saved = localStorage.getItem("registeredUsers");
+      registeredUsers = saved ? JSON.parse(saved) : [];
+    } catch (err) {
+      registeredUsers = [];
+    }
+
+    const existingUser = registeredUsers.find(u => u.email === cleanEmail);
+
+    if (isSignUp) {
+      if (existingUser) {
+        setError("❌ A profile with this email already exists! Please click 'Sign In' below.");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setError("❌ Passwords do not match! Please check your web app password.");
+        return;
+      }
+
+      // Create & save new profile with separate web app password
+      const newUser = {
+        name: name.trim(),
+        email: cleanEmail,
+        password: cleanPassword,
+        createdAt: new Date().toISOString()
+      };
+
+      registeredUsers.push(newUser);
+      localStorage.setItem("registeredUsers", JSON.stringify(registeredUsers));
+
+    } else {
+      // Sign-in validation against stored profile & password
+      if (!existingUser) {
+        setError("❌ No profile found for this email. Please register your profile first.");
+        return;
+      }
+
+      if (existingUser.password !== cleanPassword) {
+        setError("❌ Incorrect password for TrustInterview AI. Access denied.");
+        return;
+      }
+    }
+
     setLoading(true);
 
-    // Mock API authentication validation
     setTimeout(() => {
       setLoading(false);
-      const parsedName = isSignUp ? name : email.split("@")[0].replace(".", " ");
-      const formattedName = parsedName.charAt(0).toUpperCase() + parsedName.slice(1);
+      const activeName = isSignUp ? name.trim() : (existingUser ? existingUser.name : cleanEmail.split("@")[0]);
+      const formattedName = activeName.charAt(0).toUpperCase() + activeName.slice(1);
 
-      sessionStorage.setItem("candidateEmail", email);
+      sessionStorage.setItem("candidateEmail", cleanEmail);
       sessionStorage.setItem("candidateName", formattedName);
       sessionStorage.setItem("ztaBiasShieldActive", "true");
       sessionStorage.setItem("ztaAnonymizedHash", Math.random().toString(36).substring(2, 10));
       sessionStorage.setItem("ztaDemographicProtection", "Active - 12 Categories Redacted");
       navigate("/");
-    }, 1000);
+    }, 800);
   };
 
   const handleGoogleSignInClick = () => {
-    // Open centered popup window
+    // Open centered popup window passing current candidate details if entered
     const width = 450;
     const height = 550;
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
 
-    // Basename compatibility fallback
     const basename = process.env.PUBLIC_URL || "/INTERVIEW-BOT";
-    const authUrl = `${window.location.origin}${basename}/google-mock-auth`;
+    const params = new URLSearchParams();
+    if (email.trim()) params.set("email", email.trim());
+    if (name.trim()) params.set("name", name.trim());
+    const queryString = params.toString() ? `?${params.toString()}` : "";
+
+    const authUrl = `${window.location.origin}${basename}/google-mock-auth${queryString}`;
 
     window.open(
       authUrl,
@@ -96,7 +157,7 @@ export default function Login() {
               🤖 TrustInterview <span style={{ color: "var(--color-primary)" }}>AI</span>
             </h1>
             <p style={styles.tagline}>
-              Zero Trust Sandbox Placement Assessment Portal
+              {isSignUp ? "Create Candidate Profile & Web App Password" : "Sign In with Web App Password"}
             </p>
           </div>
 
@@ -144,6 +205,7 @@ export default function Login() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   disabled={loading}
+                  required
                 />
               </div>
             )}
@@ -160,11 +222,14 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
+                required
               />
             </div>
 
             <div style={styles.field}>
-              <label style={styles.label}>Password</label>
+              <label style={styles.label}>
+                {isSignUp ? "Create Web App Password" : "Web App Password"}
+              </label>
               <div style={styles.passwordContainer}>
                 <input
                   type={showPassword ? "text" : "password"}
@@ -173,6 +238,7 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
+                  required
                   style={{ paddingRight: "40px" }}
                 />
                 <button
@@ -185,8 +251,27 @@ export default function Login() {
               </div>
             </div>
 
+            {isSignUp && (
+              <div style={styles.field}>
+                <label style={styles.label}>Confirm Web App Password</label>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="form-input"
+                  placeholder="Re-enter your web app password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+            )}
+
             <button type="submit" className="glow-btn" style={styles.submitBtn} disabled={loading}>
-              {loading ? "Authenticating session..." : isSignUp ? "Create Placement Profile →" : "Sign In to Sandbox →"}
+              {loading
+                ? "Authenticating..."
+                : isSignUp
+                ? "Create Candidate Profile & Set Password →"
+                : "Sign In to Web App →"}
             </button>
           </form>
 
@@ -222,9 +307,9 @@ export default function Login() {
 
           {/* Toggle Profile mode */}
           <div style={styles.toggleMode}>
-            {isSignUp ? "Already registered? " : "New RVCE candidate? "}
-            <button onClick={() => setIsSignUp(!isSignUp)} style={styles.toggleBtn}>
-              {isSignUp ? "Sign In instead" : "Register Profile"}
+            {isSignUp ? "Already created your profile? " : "New RVCE candidate? "}
+            <button onClick={() => { setIsSignUp(!isSignUp); setError(""); }} style={styles.toggleBtn}>
+              {isSignUp ? "Sign In with Password" : "Create Candidate Profile"}
             </button>
           </div>
 
@@ -259,17 +344,17 @@ const styles = {
     position: "relative",
     zIndex: 1,
     width: "100%",
-    maxWidth: "440px",
+    maxWidth: "450px",
   },
   card: {
-    padding: "40px",
+    padding: "36px",
     background: "rgba(17, 24, 39, 0.55)",
     borderRadius: "24px",
     border: "1px solid rgba(255, 255, 255, 0.08)",
     boxShadow: "0 25px 60px rgba(0, 0, 0, 0.5)",
     display: "flex",
     flexDirection: "column",
-    gap: "24px",
+    gap: "20px",
   },
   brandHeader: {
     textAlign: "center",
@@ -299,15 +384,16 @@ const styles = {
     fontSize: "12.5px",
     color: "var(--text-muted)",
     margin: 0,
+    fontWeight: 600,
   },
   errorBox: {
-    borderRadius: "8px",
+    borderRadius: "10px",
     padding: "10px 14px",
     fontSize: "12.5px",
-    fontWeight: 500,
+    fontWeight: 600,
     color: "#f43f5e",
-    background: "rgba(244, 63, 94, 0.08)",
-    border: "1px solid rgba(244, 63, 94, 0.15)",
+    background: "rgba(244, 63, 94, 0.12)",
+    border: "1px solid rgba(244, 63, 94, 0.3)",
     display: "flex",
     alignItems: "center",
     gap: "8px",
@@ -315,7 +401,7 @@ const styles = {
   form: {
     display: "flex",
     flexDirection: "column",
-    gap: "18px",
+    gap: "16px",
   },
   field: {
     display: "flex",
@@ -391,7 +477,7 @@ const styles = {
     fontSize: "12.5px",
     color: "var(--text-muted)",
     textAlign: "center",
-    marginTop: "8px",
+    marginTop: "4px",
   },
   toggleBtn: {
     background: "none",
