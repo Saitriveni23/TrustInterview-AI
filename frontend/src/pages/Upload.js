@@ -201,6 +201,23 @@ export default function Upload({ viewRole }) {
   const [proctorAutoTerminate, setProctorAutoTerminate] = useState(() => sessionStorage.getItem("proctorAutoTerminate") !== "false");
   const [unblockMessage, setUnblockMessage] = useState("");
 
+  // Help Center states
+  const [helpTickets, setHelpTickets] = useState(() => {
+    const raw = localStorage.getItem("helpTickets");
+    return raw ? JSON.parse(raw) : [
+      { id: "TKT-1049", category: "CGPA Eligibility", subject: "Eligibility bypass query", status: "Resolved", date: "2026-08-11" }
+    ];
+  });
+  const [ticketSubject, setTicketSubject] = useState("");
+  const [ticketCategory, setTicketCategory] = useState("General");
+  const [ticketDescription, setTicketDescription] = useState("");
+  
+  const [chatMessages, setChatMessages] = useState([
+    { sender: "agent", text: "Hello! I am your Zero Trust Placement Support Assistant. Ask me anything about resume uploads, proctoring warnings, or CGPA eligibility criteria.", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+
   useEffect(() => {
     sessionStorage.setItem("selectedAgent", selectedAgent);
     sessionStorage.setItem("paceTrackerEnabled", paceTrackerEnabled);
@@ -313,6 +330,57 @@ export default function Upload({ viewRole }) {
     const match = COMPANY_DATABASE.find(c => c.name.toLowerCase() === compName.toLowerCase());
     return match ? parseFloat(match.cutoff) : 8.0;
   };
+
+  function handleSubmitTicket(e) {
+    e.preventDefault();
+    if (!ticketSubject.trim() || !ticketDescription.trim()) return;
+    const newTkt = {
+      id: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
+      category: ticketCategory,
+      subject: ticketSubject.trim(),
+      status: "Open",
+      date: new Date().toISOString().split("T")[0]
+    };
+    const updated = [newTkt, ...helpTickets];
+    setHelpTickets(updated);
+    localStorage.setItem("helpTickets", JSON.stringify(updated));
+    setTicketSubject("");
+    setTicketDescription("");
+    alert(`Ticket ${newTkt.id} submitted successfully! Our Placement Cell coordinators will review it.`);
+  }
+
+  async function handleSendChatMessage(e) {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    const userMsg = { sender: "user", text: chatInput.trim(), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatInput("");
+    setChatLoading(true);
+
+    setTimeout(() => {
+      const text = userMsg.text.toLowerCase();
+      let reply = "I understand you need assistance. Your request has been logged. Let me search placement documentation...";
+      
+      if (text.includes("cgpa") || text.includes("cutoff") || text.includes("eligibility")) {
+        reply = "Placement CGPA eligibility is defined directly by employers in their Settings. If your resume parsing returned a wrong CGPA, please ensure it lists your CGPA clearly (e.g. 'CGPA: 8.5') and re-upload your resume.";
+      } else if (text.includes("proctor") || text.includes("block") || text.includes("security") || text.includes("violations")) {
+        reply = "If you get blocked due to screen-share, tab switching, or external AI detections, recruiters can unblock your profile/IP in their dashboard under the settings sub-section 'Reset Proctor Guard'.";
+      } else if (text.includes("resume") || text.includes("reject") || text.includes("match")) {
+        reply = "Resumes are validated for name spelling authenticity (L2 verification) and skill matching relative to the selected job role (L9 verification). Make sure your entered name exactly matches the name inside the resume text.";
+      } else if (text.includes("mock") || text.includes("practice")) {
+        reply = "Practice Mock Sandbox runs do not count towards active recruiting scoring. Only official placement drive interviews are scored and logged onto recruiter rosters.";
+      } else if (text.includes("math") || text.includes("formula") || text.includes("calculation")) {
+        reply = "We use Cumulative Running Averages for dynamic session aggregates, and isolation boundaries to separate scores by recruiter company. Normalizations convert raw marks from 10 to percentages.";
+      }
+
+      setChatMessages(prev => [...prev, {
+        sender: "agent",
+        text: reply,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+      setChatLoading(false);
+    }, 1000);
+  }
 
   useEffect(() => {
     fetchCompanySettings();
@@ -1869,19 +1937,139 @@ export default function Upload({ viewRole }) {
               </div>
             </div>
           ) : currentSidebarTab === "help" ? (
-            <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {[
-                  { q: "Why was my resume rejected for the drive?", a: "The ZTA L2/L9 check verifies if the candidate matches the authoritative name in the resume. It also checks if the target job role keywords match your past project experience." },
-                  { q: "What is Zero Trust Placement Architecture (ZTA)?", a: "RVCE Placement Cell utilizes a 13-layer ZTA model to prevent evaluation bias, coordinate candidate credential checks, enforce question uniqueness per session, and ensure fully automated grading via secure LLM orchestration." },
-                  { q: "My CGPA value is wrong in the profile check.", a: "CGPA is parsed from the uploaded resume file text. Ensure your resume has a clearly visible CGPA pointer (e.g. 'CGPA: 8.8')." }
-                ].map((faq, i) => (
-                  <div key={i} style={{ padding: "16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "10px" }}>
-                    <div style={{ fontWeight: 800, color: "#c4b5fd", fontSize: "14px", marginBottom: "6px" }}>Q: {faq.q}</div>
-                    <div style={{ color: "#6b6b90", fontSize: "13px", lineHeight: 1.6 }}>A: {faq.a}</div>
-                  </div>
-                ))}
+            <div style={{ display: "grid", gridTemplateColumns: "1.45fr 1fr", gap: "24px", alignItems: "start" }} className="fade-in-up">
+              
+              {/* LEFT COLUMN: AI ASSISTANT CHAT */}
+              <div className="glass-card" style={{ padding: "24px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px", display: "flex", flexDirection: "column", height: "550px" }}>
+                <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff", marginBottom: "16px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>
+                  🤖 Placement ZTA Support Agent
+                </h3>
+                
+                {/* Chat Messages Panel */}
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "12px", marginBottom: "16px", paddingRight: "8px" }}>
+                  {chatMessages.map((msg, i) => (
+                    <div key={i} style={{
+                      alignSelf: msg.sender === "user" ? "flex-end" : "flex-start",
+                      maxWidth: "80%",
+                      background: msg.sender === "user" ? "rgba(124, 58, 237, 0.15)" : "rgba(255, 255, 255, 0.02)",
+                      border: msg.sender === "user" ? "1px solid rgba(124, 58, 237, 0.3)" : "1px solid rgba(255, 255, 255, 0.06)",
+                      padding: "12px 16px",
+                      borderRadius: msg.sender === "user" ? "18px 18px 2px 18px" : "18px 18px 18px 2px",
+                    }}>
+                      <div style={{ fontSize: "13px", color: msg.sender === "user" ? "#e9d5ff" : "#e2e8f0", lineHeight: 1.5 }}>
+                        {msg.text}
+                      </div>
+                      <div style={{ fontSize: "10px", color: "#4a4a6a", marginTop: "4px", textAlign: "right" }}>
+                        {msg.time}
+                      </div>
+                    </div>
+                  ))}
+                  {chatLoading && (
+                    <div style={{ alignSelf: "flex-start", padding: "10px 16px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.03)", borderRadius: "14px", color: "#6b6b90", fontSize: "12px", fontStyle: "italic" }}>
+                      Assistant is searching ZTA matrices...
+                    </div>
+                  )}
+                </div>
+
+                {/* Chat Input Form */}
+                <form onSubmit={handleSendChatMessage} style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="Type your support question..."
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    style={{ flex: 1, padding: "12px 16px", fontSize: "13px" }}
+                  />
+                  <button type="submit" className="glow-btn" style={{ padding: "12px 24px", background: "linear-gradient(135deg, #7c3aed, #6366f1)", border: "none", color: "#fff", borderRadius: "12px", fontWeight: 700, cursor: "pointer", fontSize: "13px" }}>
+                    Send
+                  </button>
+                </form>
               </div>
+
+              {/* RIGHT COLUMN: TICKET SUBMISSION & HISTORY */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                
+                {/* Submit Ticket Form */}
+                <div className="glass-card" style={{ padding: "24px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
+                    🎫 Submit Support Ticket
+                  </h3>
+                  <form onSubmit={handleSubmitTicket} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <div>
+                      <label style={styles.label}>SUPPORT CATEGORY</label>
+                      <select
+                        className="input-field"
+                        value={ticketCategory}
+                        onChange={e => setTicketCategory(e.target.value)}
+                        style={{ fontSize: "13px", padding: "10px 14px" }}
+                      >
+                        <option value="General">General Inquiries</option>
+                        <option value="CGPA Eligibility">CGPA / Eligibility checks</option>
+                        <option value="Resume Rejection">Resume Parser Issues</option>
+                        <option value="Proctoring Block">Proctoring Violations / IP Blocks</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={styles.label}>SUBJECT</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="Brief summary of your query..."
+                        value={ticketSubject}
+                        onChange={e => setTicketSubject(e.target.value)}
+                        style={{ fontSize: "13px", padding: "10px 14px" }}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={styles.label}>DETAILED DESCRIPTION</label>
+                      <textarea
+                        className="input-field"
+                        placeholder="Provide details about your query..."
+                        value={ticketDescription}
+                        onChange={e => setTicketDescription(e.target.value)}
+                        style={{ fontSize: "13px", padding: "10px 14px", height: "70px", resize: "none" }}
+                        required
+                      />
+                    </div>
+                    <button type="submit" className="glow-btn" style={{ padding: "12px", background: "linear-gradient(135deg, #06b6d4, #0891b2)", border: "none", color: "#fff", borderRadius: "12px", fontWeight: 700, cursor: "pointer", fontSize: "13px", marginTop: "6px" }}>
+                      Submit Ticket
+                    </button>
+                  </form>
+                </div>
+
+                {/* Ticket History */}
+                <div className="glass-card" style={{ padding: "24px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+                  <h3 style={{ fontSize: "15px", fontWeight: 800, color: "#fff", marginBottom: "14px", fontFamily: "var(--font-headings)" }}>
+                    📋 My Support Tickets
+                  </h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "150px", overflowY: "auto" }}>
+                    {helpTickets.length === 0 ? (
+                      <div style={{ fontSize: "12px", color: "#4a4a6a", textAlign: "center", padding: "10px" }}>No tickets submitted yet.</div>
+                    ) : (
+                      helpTickets.map((tkt, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "10px" }}>
+                          <div>
+                            <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0" }}>{tkt.subject}</div>
+                            <div style={{ fontSize: "10.5px", color: "#6b6b90", marginTop: "2px" }}>{tkt.id} • {tkt.category} • {tkt.date}</div>
+                          </div>
+                          <span style={{
+                            fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px",
+                            background: tkt.status === "Resolved" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)",
+                            color: tkt.status === "Resolved" ? "#10b981" : "#f59e0b",
+                            border: tkt.status === "Resolved" ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(245,158,11,0.2)"
+                          }}>
+                            {tkt.status}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           ) : null}
 
