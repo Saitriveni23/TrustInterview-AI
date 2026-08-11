@@ -11,7 +11,7 @@ const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
 const MODEL      = "llama3.2:1b";
 
 async function askGemini(prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
   const response = await axios.post(url, {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: "application/json" }
@@ -42,7 +42,7 @@ async function askModel(prompt, modelName = "llama-3-edge") {
   console.log(`[ZTA-LLM] Dispatching to LLM Model: ${modelName}`);
   if (modelName && modelName.startsWith("gemini")) {
     if (process.env.GEMINI_API_KEY) {
-      const geminiModel = modelName === "gemini-1.5-pro" ? "gemini-1.5-pro" : "gemini-3.5-flash-lite";
+      const geminiModel = modelName === "gemini-1.5-pro" ? "gemini-1.5-pro" : "gemini-1.5-flash";
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${process.env.GEMINI_API_KEY}`;
       const response = await axios.post(url, {
         contents: [{ parts: [{ text: prompt }] }],
