@@ -26,7 +26,12 @@ const THREAT_SIGNATURES = [
 
 function threatIntelMiddleware(req, res, next) {
   const ip      = req.ip || "";
-  const rawBody = JSON.stringify(req.body || {}) + (req.query ? JSON.stringify(req.query) : "");
+  // Clone the request body and exclude the large resume text from threat matching
+  const bodyCopy = { ...req.body };
+  if (bodyCopy.resumeText) {
+    delete bodyCopy.resumeText;
+  }
+  const rawBody = JSON.stringify(bodyCopy) + (req.query ? JSON.stringify(req.query) : "");
 
   // 1 — Block known-bad IP ranges
   for (const prefix of BLOCKED_IP_PREFIXES) {
