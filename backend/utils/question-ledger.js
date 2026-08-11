@@ -92,10 +92,12 @@ function getLeaderboard(filterCompany = "") {
     const data = ledger[key] || {};
     const sessions = data.sessions || [];
     
-    // Filter sessions by company if a company filter is specified
-    const filteredSessions = filterCompany && filterCompany.toLowerCase().trim() !== "general"
-      ? sessions.filter(s => s.company && s.company.toLowerCase().trim() === filterCompany.toLowerCase().trim())
-      : sessions;
+    // Filter sessions by company and only include 'actual' graded interviews (exclude mocks)
+    const filteredSessions = sessions.filter(s => {
+      const matchCompany = !filterCompany || filterCompany.toLowerCase().trim() === "general" || (s.company && s.company.toLowerCase().trim() === filterCompany.toLowerCase().trim());
+      const isActual = s.interviewType === "actual" || s.interviewType === undefined;
+      return matchCompany && isActual;
+    });
       
     const totalSessions = filteredSessions.length;
     const bestScore = totalSessions > 0 ? Math.max(...filteredSessions.map(s => s.score)) : 0;
@@ -125,13 +127,16 @@ function getLeaderboard(filterCompany = "") {
           company: "General",
           score: data.avgScore || data.bestScore || 0,
           jobRole: "AI Specialist",
-          date: data.lastSession || new Date().toISOString()
+          date: data.lastSession || new Date().toISOString(),
+          interviewType: "actual"
         }];
       }
 
-      const filteredSessions = filterCompany && filterCompany.toLowerCase().trim() !== "general"
-        ? sessions.filter(s => s.company && s.company.toLowerCase().trim() === filterCompany.toLowerCase().trim())
-        : sessions;
+      const filteredSessions = sessions.filter(s => {
+        const matchCompany = !filterCompany || filterCompany.toLowerCase().trim() === "general" || (s.company && s.company.toLowerCase().trim() === filterCompany.toLowerCase().trim());
+        const isActual = s.interviewType === "actual" || s.interviewType === undefined;
+        return matchCompany && isActual;
+      });
 
       const totalSessions = filteredSessions.length;
       if (totalSessions > 0 || !filterCompany || filterCompany.toLowerCase().trim() === "general") {
@@ -164,7 +169,7 @@ function getLeaderboard(filterCompany = "") {
 /**
  * Records a session score for leaderboard tracking.
  */
-function recordScore(email, name, score, company = "General", jobRole = "AI Specialist") {
+function recordScore(email, name, score, company = "General", jobRole = "AI Specialist", interviewType = "mock") {
   const ledger = loadLedger();
   const key    = email.toLowerCase().trim();
   if (!ledger[key]) {
@@ -181,7 +186,8 @@ function recordScore(email, name, score, company = "General", jobRole = "AI Spec
     company: company.trim(),
     score: parseFloat(score),
     jobRole: jobRole.trim(),
-    date: new Date().toISOString()
+    date: new Date().toISOString(),
+    interviewType: (interviewType || "mock").trim()
   });
   
   // Recalculate aggregates
@@ -193,4 +199,36 @@ function recordScore(email, name, score, company = "General", jobRole = "AI Spec
   saveLedger(ledger);
 }
 
-module.exports = { getSeenQuestions, markQuestionsSeen, getLeaderboard, recordScore };
+const SETTINGS_PATH = path.join(__dirname, "../company-settings.json");
+
+function loadSettings() {
+  if (!fs.existsSync(SETTINGS_PATH)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8"));
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveSettings(settings) {
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
+}
+
+function getCompanyCgpa(company) {
+  const settings = loadSettings();
+  if (!company) return settings;
+  const key = (company || "General").toLowerCase().trim();
+  return settings[key] ? parseFloat(settings[key].minCgpa) : null;
+}
+
+function setCompanyCgpa(company, minCgpa) {
+  const settings = loadSettings();
+  const key = (company || "General").toLowerCase().trim();
+  settings[key] = {
+    minCgpa: parseFloat(minCgpa),
+    updatedAt: new Date().toISOString()
+  };
+  saveSettings(settings);
+}
+
+module.exports = { getSeenQuestions, markQuestionsSeen, getLeaderboard, recordScore, getCompanyCgpa, setCompanyCgpa };

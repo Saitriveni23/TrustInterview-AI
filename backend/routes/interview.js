@@ -5,7 +5,7 @@ const fs      = require("fs");
 const path    = require("path");
 const axios   = require("axios");
 const { auditAIQuestionsGrounding } = require("../utils/hallucination-checker");
-const { getSeenQuestions, markQuestionsSeen, getLeaderboard, recordScore } = require("../utils/question-ledger");
+const { getSeenQuestions, markQuestionsSeen, getLeaderboard, recordScore, getCompanyCgpa, setCompanyCgpa } = require("../utils/question-ledger");
 
 const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
 const MODEL      = "llama3.2:1b";
@@ -94,15 +94,16 @@ router.post("/questions", async (req, res) => {
       excludeInstructions = `\n- CRITICAL: DO NOT repeat, rephrase, or generate any questions similar to these previously asked questions: ${JSON.stringify(recentSeen)}. Every question MUST be completely different.`;
     }
 
-    const prompt = `You are a professional unbiased interviewer.
-Generate exactly 7 UNIQUE interview questions based ONLY on this resume for the role: ${jobRole}
+    const prompt = `You are a professional, unbiased interviewer.
+Generate exactly 7 UNIQUE, highly personalized interview questions based ONLY on the specific projects, work experiences, and technical skills listed in this candidate's resume for the role: ${jobRole}.
 RULES:
-- Only use skills and experience mentioned in the resume
+- Every question must directly reference or ground itself in a specific project, role, or technology explicitly mentioned on the candidate's resume.
+- Do NOT generate generic, textbook interview questions (e.g. do not ask general definitions like 'What is a database index?'; instead ask how they applied database optimization in their specific project listed on their CV).
 - Never ask about age, gender, family, religion, nationality, disability${companyInstructions}${excludeInstructions}
 - 3 technical questions with timeLimit 90
 - 2 behavioural questions with timeLimit 120
 - 2 situational questions with timeLimit 120
-- EVERY question must be UNIQUE and DIFFERENT from any standard question list. Be creative and specific to this candidate's resume.
+- EVERY question must be completely UNIQUE, creative, and distinct for this candidate to prevent question leakages.`;
 
 Resume:
 ${resumeText.substring(0, 3000)}
@@ -229,13 +230,44 @@ router.get("/leaderboard", (req, res) => {
 // ── POST /api/interview/record-score ─────────────────────────────────────────
 router.post("/record-score", (req, res) => {
   try {
-    const { email, name, score, company, jobRole } = req.body;
+    const { email, name, score, company, jobRole, interviewType } = req.body;
     if (!email || score === undefined) return res.status(400).json({ error: "email and score are required." });
-    recordScore(email, name, parseFloat(score), company, jobRole);
+    recordScore(email, name, parseFloat(score), company, jobRole, interviewType);
     res.json({ success: true });
   } catch (err) {
     console.error("[Record Score Error]", err.message);
     res.status(500).json({ error: "Failed to record score." });
+  }
+});
+
+// ── GET /api/interview/company-settings ──────────────────────────────────────
+router.get("/company-settings", (req, res) => {
+  try {
+    const company = req.query.company || "";
+    const data = getCompanyCgpa(company);
+    if (!company) {
+      res.json({ success: true, settings: data });
+    } else {
+      res.json({ success: true, minCgpa: data });
+    }
+  } catch (err) {
+    console.error("[Settings Get Error]", err.message);
+    res.status(500).json({ error: "Failed to load company settings." });
+  }
+});
+
+// ── POST /api/interview/company-settings ─────────────────────────────────────
+router.post("/company-settings", (req, res) => {
+  try {
+    const { company, minCgpa } = req.body;
+    if (!company || minCgpa === undefined) {
+      return res.status(400).json({ error: "company and minCgpa are required." });
+    }
+    setCompanyCgpa(company, minCgpa);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Settings Post Error]", err.message);
+    res.status(500).json({ error: "Failed to save company settings." });
   }
 });
 

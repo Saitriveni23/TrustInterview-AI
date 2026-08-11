@@ -352,7 +352,8 @@ export default function Interview() {
         name: candidateName,
         score: parseFloat(avg.toFixed(2)),
         company: companyName || "General",
-        jobRole: jobRole || "AI Specialist"
+        jobRole: jobRole || "AI Specialist",
+        interviewType: interviewType || "mock"
       }, { headers: ztaHeaders({ "Content-Type": "application/json" }) });
     } catch (e) { console.warn("Score record failed:", e.message); }
 

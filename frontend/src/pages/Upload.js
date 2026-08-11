@@ -258,6 +258,66 @@ export default function Upload({ viewRole }) {
     }
   }
 
+  const [companySettings, setCompanySettings] = useState({});
+  const [saveStatus, setSaveStatus] = useState("");
+
+  async function fetchCompanySettings() {
+    try {
+      const res = await fetch(`${API}/api/interview/company-settings`);
+      const data = await res.json();
+      if (data.success && data.settings) {
+        setCompanySettings(data.settings);
+        
+        // If recruiter logged in, sync current minCgpa input value with backend data
+        const comp = recruiterCompany || sessionStorage.getItem("recruiterCompany");
+        if (comp) {
+          const key = comp.toLowerCase().trim();
+          if (data.settings[key]) {
+            setMinCgpa(data.settings[key].minCgpa.toString());
+            sessionStorage.setItem("minCgpa", data.settings[key].minCgpa.toString());
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch company settings:", e.message);
+    }
+  }
+
+  async function handleSaveSettings() {
+    const comp = recruiterCompany || sessionStorage.getItem("recruiterCompany") || "General";
+    setSaveStatus("Saving...");
+    try {
+      const res = await fetch(`${API}/api/interview/company-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company: comp, minCgpa: parseFloat(minCgpa) })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSaveStatus("✓ Saved!");
+        fetchCompanySettings();
+        setTimeout(() => setSaveStatus(""), 3000);
+      } else {
+        setSaveStatus("❌ Error");
+      }
+    } catch (err) {
+      setSaveStatus("❌ Error");
+    }
+  }
+
+  const getCompanyCutoff = (compName) => {
+    const key = (compName || "").toLowerCase().trim();
+    if (companySettings && companySettings[key]) {
+      return parseFloat(companySettings[key].minCgpa);
+    }
+    const match = COMPANY_DATABASE.find(c => c.name.toLowerCase() === compName.toLowerCase());
+    return match ? parseFloat(match.cutoff) : 8.0;
+  };
+
+  useEffect(() => {
+    fetchCompanySettings();
+  }, [recruiterCompany]);
+
   useEffect(() => {
     if (role === "admin" && currentSidebarTab === "dashboard") {
       fetchLeaderboard();
@@ -433,7 +493,7 @@ export default function Upload({ viewRole }) {
         }
       }
 
-      const companyCutoff = selectedCompanyData ? parseFloat(selectedCompanyData.cutoff) : 8.0;
+      const companyCutoff = selectedCompanyData ? getCompanyCutoff(selectedCompanyData.name) : 8.0;
       setEligibilityLogs(prev => [
         ...prev,
         `[L9 PDP] Scanning resume text blocks for academic credentials...`,
@@ -443,7 +503,7 @@ export default function Upload({ viewRole }) {
 
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      if (role === "candidate" || cgpa >= companyCutoff) {
+      if (role === "admin" || cgpa >= companyCutoff) {
         setEligibilityCheck("passed");
         setEligibilityLogs(prev => [
           ...prev,
@@ -1167,7 +1227,7 @@ export default function Upload({ viewRole }) {
                           </div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <span style={{ fontSize: "11px", fontWeight: 700, color: "#34d399", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", padding: "3px 10px", borderRadius: "8px" }}>
-                              CGPA ≥ {comp.cutoff}
+                              CGPA ≥ {getCompanyCutoff(comp.name).toFixed(1)}
                             </span>
                             <span style={{ fontSize: "11px", color: "#4a4a6a" }}>📚 PYQ syllabus</span>
                           </div>
@@ -1239,7 +1299,7 @@ export default function Upload({ viewRole }) {
                   </button>
                   <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                     <span style={{ fontSize: "12px", color: "#10b981", background: "rgba(16, 185, 129, 0.1)", padding: "4px 12px", borderRadius: "20px", border: "1px solid rgba(16, 185, 129, 0.2)", fontWeight: 700 }}>
-                      CGPA Cutoff &gt;= {selectedCompanyData.cutoff}
+                      CGPA Cutoff &gt;= {getCompanyCutoff(selectedCompanyData.name).toFixed(1)}
                     </span>
                     <span style={{ fontSize: "12px", color: "#38bdf8", background: "rgba(56, 189, 248, 0.1)", padding: "4px 12px", borderRadius: "20px", border: "1px solid rgba(56, 189, 248, 0.2)", fontWeight: 700 }}>
                       {selectedCompanyData.spots} spots filled
@@ -1435,7 +1495,7 @@ export default function Upload({ viewRole }) {
                           🛡️ ZTA Session Guard
                         </h3>
                         <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
-                          {role === "admin" && <div>• Minimum CGPA Cutoff: {selectedCompanyData.cutoff}</div>}
+                          {role === "admin" && <div>• Minimum CGPA Cutoff: {getCompanyCutoff(selectedCompanyData.name).toFixed(1)}</div>}
                           <div>• Live Camera Face Verification Enforced</div>
                           <div>• L14 Non-repeating unique question seed active</div>
                         </div>
@@ -1666,14 +1726,23 @@ export default function Upload({ viewRole }) {
                     </div>
                     <div>
                       <label style={styles.label}>PLACEMENT CUTOFF CGPA</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        className="input-field"
-                        value={minCgpa}
-                        onChange={e => setMinCgpa(e.target.value)}
-                        style={{ fontSize: "12px", padding: "8px 12px" }}
-                      />
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <input
+                          type="number"
+                          step="0.1"
+                          className="input-field"
+                          value={minCgpa}
+                          onChange={e => setMinCgpa(e.target.value)}
+                          style={{ fontSize: "12px", padding: "8px 12px", flex: 1 }}
+                        />
+                        <button
+                          onClick={handleSaveSettings}
+                          className="glow-btn"
+                          style={{ padding: "8px 16px", fontSize: "11px", background: "linear-gradient(135deg, #06b6d4, #0891b2)", border: "none", color: "#fff", borderRadius: "8px", fontWeight: 700, cursor: "pointer" }}
+                        >
+                          {saveStatus || "Save"}
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label style={styles.label}>ACTIVE INTERVIEW AGENT PERSONALITY</label>
