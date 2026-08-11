@@ -341,6 +341,51 @@ export default function Login({ portalType }) {
             </div>
           </div>
 
+          {/* Portal Switcher Tabs */}
+          <div style={{
+            display: "flex",
+            background: "rgba(255, 255, 255, 0.02)",
+            borderRadius: "12px",
+            padding: "4px",
+            marginBottom: "24px",
+            border: "1px solid rgba(255, 255, 255, 0.05)",
+          }}>
+            {[
+              { label: "🎓 Candidate Portal", type: "candidate" },
+              { label: "💼 Recruiter Portal", type: "employer" }
+            ].map((item, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setPortal(item.type);
+                  setIsSignUp(true);
+                  setError("");
+                  setSuccess("");
+                  setEmail("");
+                  setPassword("");
+                  setConfirmPassword("");
+                  setName("");
+                  setCompanyName("");
+                  navigate(item.type === "employer" ? "/recruiter" : "/login");
+                }}
+                style={{
+                  flex: 1, padding: "8px", borderRadius: "8px", border: "none", cursor: "pointer",
+                  fontSize: "12px", fontWeight: 700, fontFamily: "var(--font-headings)",
+                  background: portal === item.type
+                    ? (item.type === "employer" ? "rgba(6, 182, 212, 0.15)" : "rgba(124, 58, 237, 0.15)")
+                    : "transparent",
+                  color: portal === item.type
+                    ? (item.type === "employer" ? "#22d3ee" : "#c4b5fd")
+                    : "#6b6b90",
+                  transition: "all 0.2s",
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
           {/* Form Header */}
           <div style={{ marginBottom: "24px" }}>
             <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#f0f0ff", fontFamily: "var(--font-headings)", marginBottom: "6px" }}>
