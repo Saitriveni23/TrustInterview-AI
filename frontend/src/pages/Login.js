@@ -544,6 +544,36 @@ export default function Login({ portalType }) {
             </>
           )}
 
+          <div style={{ marginTop: "24px", textAlign: "center", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "16px" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setSuccess("");
+                setEmail("");
+                setPassword("");
+                setConfirmPassword("");
+                setName("");
+                setCompanyName("");
+                if (portal === "employer") {
+                  setPortal("candidate");
+                  setIsSignUp(true);
+                  navigate("/login");
+                } else {
+                  setPortal("employer");
+                  setIsSignUp(true);
+                  navigate("/recruiter");
+                }
+              }}
+              style={{
+                background: "none", border: "none", color: "#a78bfa", fontSize: "12.5px", fontWeight: 700, cursor: "pointer",
+                textDecoration: "underline", textUnderlineOffset: "4px"
+              }}
+            >
+              {portal === "employer" ? "Are you a Student? Switch to Candidate Portal →" : "Are you a Recruiter? Switch to Employer Portal →"}
+            </button>
+          </div>
+
         </div>
       )}
     </div>
