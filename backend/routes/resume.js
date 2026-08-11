@@ -144,11 +144,14 @@ router.post("/validate", (req, res) => {
   const header = text.substring(0, 600);
   const lines  = header.split("\n").map(l => l.trim()).filter(l => l.length > 1);
 
-  // Heuristic: first line that looks like a proper name (2-4 words, title-cased, no digits/special chars)
-  const namePattern = /^[A-Z][a-z]+(?: [A-Z][a-z]+){1,3}$/;
+  // Heuristic: first line that looks like a proper name (2-5 words, title-cased or all-caps, no contact info symbols)
+  const namePattern = /^[A-Za-z]+(?:\s+[A-Za-z\.]+){1,4}$/;
   let extractedName = null;
 
   for (const line of lines.slice(0, 8)) {
+    if (line.includes("@") || line.includes("/") || line.includes(":") || /[\d]/.test(line)) {
+      continue;
+    }
     if (namePattern.test(line)) {
       extractedName = line;
       break;
@@ -157,15 +160,18 @@ router.post("/validate", (req, res) => {
 
   // Fallback: find "Name: Xxx" pattern
   if (!extractedName) {
-    const nameTag = text.match(/(?:name\s*[:\-]\s*)([A-Z][a-zA-Z ]{3,40})/i);
+    const nameTag = text.match(/(?:name\s*[:\-]\s*)([A-Za-z ]{3,40})/i);
     if (nameTag) extractedName = nameTag[1].trim();
   }
 
-  // Fallback 2: pick the longest capitalised-word sequence in first 300 chars
+  // Fallback 2: pick the longest capitalised/all-caps word sequence in first 300 chars
   if (!extractedName) {
-    const caps = header.match(/[A-Z][a-z]+(?: [A-Z][a-z]+)+/g);
+    const caps = header.match(/[A-Za-z]+(?:\s+[A-Za-z]+)+/g);
     if (caps && caps.length > 0) {
-      extractedName = caps.sort((a, b) => b.length - a.length)[0];
+      const filtered = caps.filter(val => !/resume|cv|portfolio|experience|skills|education|curriculum/i.test(val));
+      if (filtered.length > 0) {
+        extractedName = filtered.sort((a, b) => b.length - a.length)[0];
+      }
     }
   }
 
