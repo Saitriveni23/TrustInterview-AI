@@ -767,7 +767,7 @@ export default function Upload({ viewRole }) {
                   {(role === "admin" ? [
                     { label: "Enrolled Candidates", value: leaderboard.length, color: "#7c3aed", border: "#7c3aed" },
                     { label: "Sessions Graded",    value: leaderboard.reduce((acc, c) => acc + (c.totalSessions || 0), 0), color: "#06b6d4", border: "#06b6d4" },
-                    { label: "Average Performance", value: leaderboard.length ? `${(leaderboard.reduce((acc, c) => acc + (candScoreAvg(c)), 0) / leaderboard.length).toFixed(1)}%` : "0%", color: "#10b981", border: "#10b981" },
+                    { label: "Average Performance", value: leaderboard.length ? `${((leaderboard.reduce((acc, c) => acc + (candScoreAvg(c)), 0) / leaderboard.length) * 10).toFixed(0)}%` : "0%", color: "#10b981", border: "#10b981" },
                     { label: "Proctor Warnings",  value: isBlocked ? "1 (Active Block)" : "0 (Clear)", color: "#ef4444", border: "#ef4444" },
                   ] : [
                     { label: "Total Drives",    value: COMPANY_DATABASE.length,  color: "#7c3aed", border: "#7c3aed" },
@@ -923,6 +923,7 @@ export default function Upload({ viewRole }) {
                             <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>SESSIONS</th>
                             <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>AVERAGE SCORE</th>
                             <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>BEST SCORE</th>
+                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>ROUND VERDICT</th>
                             <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>COMPLIANCE STATUS</th>
                             <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700, textAlign: "right" }}>ACTIONS</th>
                           </tr>
@@ -930,6 +931,27 @@ export default function Upload({ viewRole }) {
                         <tbody>
                           {leaderboard.map((cand, idx) => {
                             const isCandBlocked = cand.avgScore < 4.0;
+                            const avgScoreNum = parseFloat(cand.avgScore || 0);
+                            const bestScoreNum = parseFloat(cand.bestScore || 0);
+                            
+                            // Selection Status mapping
+                            let verdictLabel = "❌ ELIMINATED";
+                            let verdictColor = "#f87171";
+                            let verdictBg = "rgba(239, 68, 68, 0.1)";
+                            let verdictBorder = "rgba(239, 68, 68, 0.2)";
+                            
+                            if (avgScoreNum >= 7.0) {
+                              verdictLabel = "✓ SELECTED (Next Round)";
+                              verdictColor = "#34d399";
+                              verdictBg = "rgba(52, 211, 153, 0.1)";
+                              verdictBorder = "rgba(52, 211, 153, 0.2)";
+                            } else if (avgScoreNum >= 5.0) {
+                              verdictLabel = "⚠️ UNDER REVIEW";
+                              verdictColor = "#fbbf24";
+                              verdictBg = "rgba(251, 191, 36, 0.1)";
+                              verdictBorder = "rgba(251, 191, 36, 0.2)";
+                            }
+
                             return (
                               <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
                                 <td style={{ padding: "14px 12px", display: "flex", alignItems: "center", gap: "12px" }}>
@@ -942,10 +964,23 @@ export default function Upload({ viewRole }) {
                                   </div>
                                 </td>
                                 <td style={{ padding: "14px 12px", color: "#d4d4f0" }}>{cand.totalSessions}</td>
-                                <td style={{ padding: "14px 12px", fontWeight: 700, color: cand.avgScore >= 7.5 ? "#34d399" : cand.avgScore >= 5.0 ? "#f59e0b" : "#ef4444" }}>
-                                  {cand.avgScore}%
+                                <td style={{ padding: "14px 12px", fontWeight: 700, color: avgScoreNum >= 7.0 ? "#34d399" : avgScoreNum >= 5.0 ? "#f59e0b" : "#ef4444" }}>
+                                  {avgScoreNum.toFixed(1)} / 10 ({(avgScoreNum * 10).toFixed(0)}%)
                                 </td>
-                                <td style={{ padding: "14px 12px", fontWeight: 800, color: "#a78bfa" }}>{cand.bestScore}%</td>
+                                <td style={{ padding: "14px 12px", fontWeight: 800, color: "#a78bfa" }}>
+                                  {bestScoreNum.toFixed(1)} / 10 ({(bestScoreNum * 10).toFixed(0)}%)
+                                </td>
+                                <td style={{ padding: "14px 12px" }}>
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center", gap: "6px",
+                                    fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "6px",
+                                    background: verdictBg,
+                                    color: verdictColor,
+                                    border: `1px solid ${verdictBorder}`
+                                  }}>
+                                    {verdictLabel}
+                                  </span>
+                                </td>
                                 <td style={{ padding: "14px 12px" }}>
                                   <span style={{
                                     display: "inline-flex", alignItems: "center", gap: "6px",

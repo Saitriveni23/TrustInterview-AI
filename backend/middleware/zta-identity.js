@@ -17,7 +17,8 @@ const PUBLIC_PATHS = [
   "/api/auth/session", 
   "/api/zta-status",
   "/api/auth/google",
-  "/api/auth/google/callback"
+  "/api/auth/google/callback",
+  "/api/interview/leaderboard"
 ];
 
 /**

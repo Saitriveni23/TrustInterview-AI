@@ -96,10 +96,15 @@ function recordScore(email, name, score) {
     ledger[key] = { questions: [], hashes: [], totalSessions: 0 };
   }
   ledger[key].name = name || email.split("@")[0];
-  const prev       = ledger[key].avgScore || 0;
-  const sessions   = ledger[key].totalSessions || 1;
+  
+  // Increment sessions count
+  ledger[key].totalSessions = (ledger[key].totalSessions || 0) + 1;
+  const sessions = ledger[key].totalSessions;
+  
+  const prev = ledger[key].avgScore || 0;
   ledger[key].avgScore  = parseFloat(((prev * (sessions - 1) + score) / sessions).toFixed(2));
   ledger[key].bestScore = Math.max(ledger[key].bestScore || 0, score);
+  ledger[key].lastSession = new Date().toISOString();
   saveLedger(ledger);
 }
 
