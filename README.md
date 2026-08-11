@@ -1,48 +1,57 @@
 <div align="center">
   <h1>🛡️ TrustInterview AI</h1>
-  <p><strong>AI-powered interview bot with a 13-Layer Zero Trust Architecture (ZTA) backend.</strong></p>
+  <p><strong>AI-powered campus recruitment portal with Proctor Anti-Cheat Shield and a 13-Layer Zero Trust Architecture (ZTA) backend.</strong></p>
 </div>
 
 <br />
 
-TrustInterview AI reads your resume and asks personalized, bias-free questions. Built with state-of-the-art security, it enforces 13 layers of Zero Trust Architecture including real-time threat intelligence, hallucination filtering, and anti-bias checks.
+TrustInterview AI is an enterprise-grade placement assessment platform tailored for RVCE Bengaluru Placements. It validates candidate claims, coordinates recruitment campaigns, routes AI interviewer personalities, and actively monitors compliance using a web-based proctoring shield.
 
-## ✨ Key Features
+---
 
-- 📄 **Resume Upload (PDF)**: Automatically parses your experience to generate tailored questions.
-- 🤖 **Dynamic AI Generation**: Creates exactly 7 personalized questions (technical, behavioural, situational).
-- 🎙️ **Voice Answers**: Speak your answers directly into the microphone.
-- ⚖️ **Anti-Bias Filtering (ZTA-L12)**: Automatically detects and redacts biases regarding age, gender, race, disability, etc.
-- 🔍 **Hallucination & Fact Checker (ZTA-L13)**: Verifies candidate claims against the uploaded resume to prevent hallucination.
-- 📊 **Live ZTA Dashboard**: Real-time visualization of the 13 Zero Trust security layers (Network, CORS, Payload, Threat Intel, etc.).
-- 📈 **Live Evaluation & Scoring**: Immediate feedback and 0-10 scoring based ONLY on technical merit.
-- 🎯 **Comprehensive Final Report**: Auto-generated hire/no-hire recommendation with compliance and truthfulness grades.
+## 🔒 Access Portals & Roles
 
-## 🛠️ Tech Stack
+TrustInterview AI is separated into two dedicated URL portals:
 
-- **Frontend**: React 19, React Router, Axios
-- **Backend**: Node.js, Express, Helmet, Express-Rate-Limit, Multer
-- **AI Models**: Ollama (Llama 3.2), OpenAI (GPT-3.5-Turbo), Google Gemini (1.5 Flash) fallbacks
-- **Architecture**: 13-Layer Zero Trust Architecture (ZTA)
+### 🎓 Candidate Portal
+*   **Sign-In URL**: [http://localhost:3000/login](http://localhost:3000/login) (redirects to [http://localhost:3000/](http://localhost:3000/))
+*   **Key Features**:
+    *   Mock Interview Sandbox (practice sessions).
+    *   Official Placements Drive (single graded attempt).
+    *   Curated Placement Prep Courses & Calendar drives.
+    *   Candidate account history card.
+    *   *Note: Academic CGPA criteria and ZTA compliance blocks are completely hidden from candidate dashboards to ensure a focused assessment experience.*
+
+### 💼 Recruiter & Employer Portal
+*   **Sign-In URL**: [http://localhost:3000/recruiter](http://localhost:3000/recruiter) (redirects to [http://localhost:3000/recruiter/dashboard](http://localhost:3000/recruiter/dashboard))
+*   **Key Features**:
+    *   **Candidate Evaluation Roster**: Displays candidate performance, average grading metrics, ZTA compliance status, and active SOAR proctor warnings.
+    *   **Proctor Security Control Panel**: Customize screenshare enforcement, AI tools tab-switch detection, and unblock candidate IPs directly.
+    *   **Model Routing settings**: Select AI agent personalities (Conversational Skyy, Deep-diver Zeus, Empathetic Matt).
+    *   **ATS weight thresholds**: Adjust weight distribution for Technical Skills, Experience, and Academics.
+
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18+)
-- Local Ollama running (optional, falls back to Gemini/OpenAI if configured)
+*   Node.js (v18+)
+*   npm or yarn
 
-### 1. Clone the repository
+### 1. Clone the Repository
 ```bash
-git clone https://github.com/Saitriveni23/INTERVIEW-BOT.git
-cd INTERVIEW-BOT
+git clone https://github.com/Saitriveni23/TrustInterview-AI.git
+cd TrustInterview-AI
 ```
 
 ### 2. Backend Setup
+Initialize backend server configurations:
 ```bash
 cd backend
 npm install
 ```
-Create a `.env` file in the `backend` directory (use `.env.example` as a reference):
+
+Create a `.env` file in the `backend/` directory:
 ```env
 PORT=5001
 FRONTEND_URL=http://localhost:3000
@@ -50,36 +59,33 @@ OPENAI_API_KEY=your_openai_api_key
 GEMINI_API_KEY=your_gemini_api_key
 ZTA_ENABLED=true
 ```
-Start the backend server:
+
+Start the Node.js API:
 ```bash
 npm start
 ```
 
 ### 3. Frontend Setup
+Initialize frontend UI server:
 ```bash
 cd ../frontend
 npm install
 npm start
 ```
 
-The application will be available at `http://localhost:3000`.
+The app will compile and automatically open [http://localhost:3000](http://localhost:3000) (Candidate Login) and [http://localhost:3000/recruiter](http://localhost:3000/recruiter) (Recruiter Login).
 
-## 🛡️ Zero Trust Architecture Layers
+---
 
-This system implements a strict default-deny policy across 13 layers:
-1. **Identity & Session**: JWT-based ephemeral tokens.
-2. **Device Fingerprinting**: Anomalous device blocking.
-3. **Network & CORS**: Strict origin enforcement.
-4. **Workload & Payload**: Memory exhaustion prevention.
-5. **Data Protection**: Secure data handling.
-6. **Audit Logging**: Comprehensive request auditing.
-7. **SOAR Auto-Block**: Automated threat response.
-8. **Governance & XSS**: Payload sanitization.
-9. **Policy Decision**: PDP/PEP enforcement.
-10. **Edge & HSTS**: Enforced secure transport.
-11. **Threat Intelligence**: IP reputation & signature scanning.
-12. **Bias Filter**: Employment law discrimination detection.
-13. **Hallucination Checker**: Factuality verification against resume.
+## 🛡️ Proctoring & Security Shield
+
+The platform features an active proctor guard to prevent external assistance during assessments:
+1.  **Screenshare Enforcer**: Candidates must share their screen via the browser API before starting the placement interview. If screensharing stops, the call is instantly aborted.
+2.  **Focus Monitor**: Minimized windows, tab-swapping, or changing application focus will flag a violation and instantly lock the candidate's workspace.
+3.  **Clipboard Lock**: Disables copy-paste actions on interview questions to block external AI lookup.
+4.  **IP SOAR Override**: If a violation triggers, the candidate's IP is blocked, displaying an "Assessment Terminated" lock screen. Recruiters can reset this block from the roster table or settings tab.
+
+---
 
 ## 🧑‍💻 Authors & Contributors
 
@@ -87,5 +93,3 @@ This system implements a strict default-deny policy across 13 layers:
 - **Sai Pranavi A P** - [github.com/saipranavi247-prog](https://github.com/saipranavi247-prog)
 - **Sanjana H V** - [github.com/sanjanahv](https://github.com/sanjanahv)
 - **Sneha V** - [github.com/Snehav-unique](https://github.com/Snehav-unique)
----
-*Refer to the included `TrustInterview_ZTA_Architecture_Report.pdf` for an in-depth security analysis.*
