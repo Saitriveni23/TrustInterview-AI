@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API = process.env.REACT_APP_API_URL || "http://localhost:5001";
+
 export default function Login({ portalType }) {
   const navigate = useNavigate();
 
@@ -33,6 +35,14 @@ export default function Login({ portalType }) {
         sessionStorage.setItem("ztaBiasShieldActive", "true");
         sessionStorage.setItem("ztaAnonymizedHash", Math.random().toString(36).substring(2, 10));
         sessionStorage.setItem("ztaDemographicProtection", "Active - 14 Categories Redacted");
+
+        // Sync Google Auth login to backend
+        fetch(`${API}/api/auth/register-sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: googleName, email: googleEmail, role: "candidate" })
+        }).catch(err => console.warn("Backend Google sync failed:", err));
+
         navigate("/");
       }
     };
@@ -87,6 +97,14 @@ export default function Login({ portalType }) {
         createdAt: new Date().toISOString()
       });
       localStorage.setItem("registeredUsers", JSON.stringify(registeredUsers));
+
+      // Sync user to backend database
+      fetch(`${API}/api/auth/register-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), email: cleanEmail, role: targetRole })
+      }).catch(err => console.warn("Backend register sync failed:", err));
+
       setSuccess("Account registered successfully! You can now sign in.");
       setIsSignUp(false);
       setPassword("");
@@ -119,12 +137,20 @@ export default function Login({ portalType }) {
       sessionStorage.setItem("ztaBiasShieldActive", "true");
       sessionStorage.setItem("ztaAnonymizedHash", Math.random().toString(36).substring(2, 10));
       sessionStorage.setItem("ztaDemographicProtection", "Active - 14 Categories Redacted");
+
+      // Sync user to backend database on login
+      fetch(`${API}/api/auth/register-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: activeName, email: cleanEmail, role: targetRole })
+      }).catch(err => console.warn("Backend login sync failed:", err));
+
       if (targetRole === "admin") {
         navigate("/recruiter/dashboard");
       } else {
         navigate("/");
       }
-    }, 900);
+    }, 1000);
   };
 
   const handleGoogleSignIn = () => {

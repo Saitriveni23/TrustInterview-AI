@@ -72,18 +72,53 @@ function markQuestionsSeen(email, questions) {
  */
 function getLeaderboard() {
   const ledger = loadLedger();
-  return Object.entries(ledger)
-    .filter(([, v]) => v.totalSessions > 0)
-    .map(([email, v]) => ({
-      email,
-      name:          v.name || email.split("@")[0],
-      totalSessions: v.totalSessions || 0,
-      bestScore:     v.bestScore || 0,
-      avgScore:      v.avgScore  || 0,
-      lastSession:   v.lastSession || "",
-    }))
-    .sort((a, b) => b.bestScore - a.bestScore)
-    .slice(0, 50);
+  const USERS_PATH = path.join(__dirname, "../registered-users.json");
+
+  // Load registered users from backend database
+  let registered = [];
+  if (fs.existsSync(USERS_PATH)) {
+    try {
+      registered = JSON.parse(fs.readFileSync(USERS_PATH, "utf-8"));
+    } catch (_) {}
+  }
+
+  // Filter out any admin/recruiter roles (we only want candidate rosters)
+  const candidates = registered.filter(u => u.role !== "admin");
+
+  const merged = candidates.map(user => {
+    const key = user.email.toLowerCase().trim();
+    const scoreData = ledger[key] || {};
+    return {
+      email:         user.email,
+      name:          scoreData.name || user.name || user.email.split("@")[0],
+      totalSessions: scoreData.totalSessions || 0,
+      bestScore:     scoreData.bestScore || 0,
+      avgScore:      scoreData.avgScore  || 0,
+      lastSession:   scoreData.lastSession || user.registeredAt || "",
+    };
+  });
+
+  // Keep backward compatibility: add any ledger keys not present in registered-users
+  const candidateEmails = new Set(candidates.map(c => c.email.toLowerCase().trim()));
+  for (const [email, data] of Object.entries(ledger)) {
+    if (data.totalSessions > 0 && !candidateEmails.has(email)) {
+      merged.push({
+        email,
+        name:          data.name || email.split("@")[0],
+        totalSessions: data.totalSessions || 0,
+        bestScore:     data.bestScore || 0,
+        avgScore:      data.avgScore || 0,
+        lastSession:   data.lastSession || "",
+      });
+    }
+  }
+
+  // Sort: active candidates at the top (bestScore desc), followed by inactive/pending candidates
+  return merged.sort((a, b) => {
+    if (a.totalSessions > 0 && b.totalSessions === 0) return -1;
+    if (a.totalSessions === 0 && b.totalSessions > 0) return 1;
+    return b.bestScore - a.bestScore;
+  });
 }
 
 /**

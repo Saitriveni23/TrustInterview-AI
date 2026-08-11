@@ -65,4 +65,66 @@ router.post('/logout', (req, res) => {
   });
 });
 
+const fs = require('fs');
+const path = require('path');
+const USERS_PATH = path.join(__dirname, '../registered-users.json');
+
+function loadUsers() {
+  if (!fs.existsSync(USERS_PATH)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(USERS_PATH, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveUsers(users) {
+  fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2), 'utf-8');
+}
+
+// Sync registered/logged-in users with backend
+router.post('/register-sync', (req, res) => {
+  try {
+    const { name, email, role } = req.body;
+    if (!email || !name) {
+      return res.status(400).json({ error: 'Name and email are required.' });
+    }
+    const cleanEmail = email.toLowerCase().trim();
+    const users = loadUsers();
+    
+    let user = users.find(u => u.email === cleanEmail);
+    if (!user) {
+      user = {
+        name: name.trim(),
+        email: cleanEmail,
+        role: role || 'candidate',
+        registeredAt: new Date().toISOString()
+      };
+      users.push(user);
+      saveUsers(users);
+      console.log(`[Sync] Synced user to backend: ${cleanEmail}`);
+    } else {
+      // update name if needed
+      user.name = name.trim();
+      user.role = role || user.role;
+      saveUsers(users);
+    }
+    res.json({ success: true, user });
+  } catch (err) {
+    console.error('[Sync Error]', err.message);
+    res.status(500).json({ error: 'Failed to sync registration.' });
+  }
+});
+
+// Fetch list of registered users
+router.get('/registered-users', (req, res) => {
+  try {
+    const users = loadUsers();
+    res.json({ success: true, users });
+  } catch (err) {
+    console.error('[Get Users Error]', err.message);
+    res.status(500).json({ error: 'Failed to fetch registered users.' });
+  }
+});
+
 module.exports = router;

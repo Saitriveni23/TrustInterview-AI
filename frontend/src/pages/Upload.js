@@ -930,7 +930,7 @@ export default function Upload({ viewRole }) {
                         </thead>
                         <tbody>
                           {leaderboard.map((cand, idx) => {
-                            const isCandBlocked = cand.avgScore < 4.0;
+                            const isCandBlocked = cand.totalSessions > 0 && cand.avgScore < 4.0;
                             const avgScoreNum = parseFloat(cand.avgScore || 0);
                             const bestScoreNum = parseFloat(cand.bestScore || 0);
                             
@@ -940,7 +940,12 @@ export default function Upload({ viewRole }) {
                             let verdictBg = "rgba(239, 68, 68, 0.1)";
                             let verdictBorder = "rgba(239, 68, 68, 0.2)";
                             
-                            if (avgScoreNum >= 7.0) {
+                            if (cand.totalSessions === 0) {
+                              verdictLabel = "📋 NO ASSESSMENT";
+                              verdictColor = "#9ca3af";
+                              verdictBg = "rgba(156, 163, 175, 0.1)";
+                              verdictBorder = "rgba(156, 163, 175, 0.2)";
+                            } else if (avgScoreNum >= 7.0) {
                               verdictLabel = "✓ SELECTED (Next Round)";
                               verdictColor = "#34d399";
                               verdictBg = "rgba(52, 211, 153, 0.1)";
@@ -964,11 +969,11 @@ export default function Upload({ viewRole }) {
                                   </div>
                                 </td>
                                 <td style={{ padding: "14px 12px", color: "#d4d4f0" }}>{cand.totalSessions}</td>
-                                <td style={{ padding: "14px 12px", fontWeight: 700, color: avgScoreNum >= 7.0 ? "#34d399" : avgScoreNum >= 5.0 ? "#f59e0b" : "#ef4444" }}>
-                                  {avgScoreNum.toFixed(1)} / 10 ({(avgScoreNum * 10).toFixed(0)}%)
+                                <td style={{ padding: "14px 12px", fontWeight: 700, color: cand.totalSessions === 0 ? "#6b6b90" : (avgScoreNum >= 7.0 ? "#34d399" : avgScoreNum >= 5.0 ? "#f59e0b" : "#ef4444") }}>
+                                  {cand.totalSessions === 0 ? "—" : `${avgScoreNum.toFixed(1)} / 10 (${(avgScoreNum * 10).toFixed(0)}%)`}
                                 </td>
-                                <td style={{ padding: "14px 12px", fontWeight: 800, color: "#a78bfa" }}>
-                                  {bestScoreNum.toFixed(1)} / 10 ({(bestScoreNum * 10).toFixed(0)}%)
+                                <td style={{ padding: "14px 12px", fontWeight: 800, color: cand.totalSessions === 0 ? "#6b6b90" : "#a78bfa" }}>
+                                  {cand.totalSessions === 0 ? "—" : `${bestScoreNum.toFixed(1)} / 10 (${(bestScoreNum * 10).toFixed(0)}%)`}
                                 </td>
                                 <td style={{ padding: "14px 12px" }}>
                                   <span style={{
@@ -985,24 +990,28 @@ export default function Upload({ viewRole }) {
                                   <span style={{
                                     display: "inline-flex", alignItems: "center", gap: "6px",
                                     fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px",
-                                    background: isCandBlocked ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)",
-                                    color: isCandBlocked ? "#f87171" : "#34d399",
-                                    border: isCandBlocked ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(16,185,129,0.2)"
+                                    background: cand.totalSessions === 0 ? "rgba(156,163,175,0.06)" : (isCandBlocked ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)"),
+                                    color: cand.totalSessions === 0 ? "#6b6b90" : (isCandBlocked ? "#f87171" : "#34d399"),
+                                    border: cand.totalSessions === 0 ? "1px solid rgba(156,163,175,0.15)" : (isCandBlocked ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(16,185,129,0.2)")
                                   }}>
-                                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: isCandBlocked ? "#ef4444" : "#10b981" }} />
-                                    {isCandBlocked ? "VERIFICATION FAILED" : "✓ ZTA SECURED"}
+                                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: cand.totalSessions === 0 ? "#6b6b90" : (isCandBlocked ? "#ef4444" : "#10b981") }} />
+                                    {cand.totalSessions === 0 ? "PENDING" : (isCandBlocked ? "VERIFICATION FAILED" : "✓ ZTA SECURED")}
                                   </span>
                                 </td>
                                 <td style={{ padding: "14px 12px", textAlign: "right" }}>
-                                  <button
-                                    onClick={async () => {
-                                      await handleResetIPBlock();
-                                    }}
-                                    className="ghost-btn"
-                                    style={{ padding: "6px 12px", fontSize: "11px", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" }}
-                                  >
-                                    Reset Block
-                                  </button>
+                                  {cand.totalSessions > 0 ? (
+                                    <button
+                                      onClick={async () => {
+                                        await handleResetIPBlock();
+                                      }}
+                                      className="ghost-btn"
+                                      style={{ padding: "6px 12px", fontSize: "11px", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" }}
+                                    >
+                                      Reset Block
+                                    </button>
+                                  ) : (
+                                    <span style={{ color: "#4a4a6a", fontSize: "11px", fontStyle: "italic" }}>No action</span>
+                                  )}
                                 </td>
                               </tr>
                             );
