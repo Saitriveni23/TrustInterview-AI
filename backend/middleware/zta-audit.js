@@ -24,6 +24,7 @@ function writeLog(entry) {
 }
 
 function auditMiddleware(req, res, next) {
+  if (req.method === "OPTIONS") return next();
   const startTime = Date.now();
 
   // Intercept res.json to capture status code after response

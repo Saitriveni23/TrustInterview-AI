@@ -41,6 +41,7 @@ function deepSanitize(obj, depth = 0) {
 }
 
 function governanceMiddleware(req, res, next) {
+  if (req.method === "OPTIONS") return next();
   if (req.path === "/api/auth/session" || req.path === "/api/health") return next();
 
   // Only inspect POST / PUT bodies

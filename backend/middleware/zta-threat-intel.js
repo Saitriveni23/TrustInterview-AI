@@ -25,6 +25,7 @@ const THREAT_SIGNATURES = [
 ];
 
 function threatIntelMiddleware(req, res, next) {
+  if (req.method === "OPTIONS") return next();
   const ip      = req.ip || "";
   // Clone the request body and exclude the large resume text from threat matching
   const bodyCopy = { ...req.body };
@@ -44,7 +45,7 @@ function threatIntelMiddleware(req, res, next) {
   // 2 — Scan for threat signatures in full request
   for (const sig of THREAT_SIGNATURES) {
     if (sig.test(rawBody) || sig.test(req.path)) {
-      console.error(`[ZTA-L11] THREAT SIGNATURE matched — IP: ${ip} Path: ${req.path}`);
+      console.error(`[ZTA-L11] THREAT SIGNATURE matched: ${sig} — IP: ${ip} Path: ${req.path} RawBody: ${rawBody}`);
       return res.status(400).json({ error: "ZTA-L11: Request blocked — threat signature detected." });
     }
   }

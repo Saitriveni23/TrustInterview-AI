@@ -38,6 +38,7 @@ function generateSession() {
  * Enforces: every non-public route must present a valid Bearer token.
  */
 function identityMiddleware(req, res, next) {
+  if (req.method === "OPTIONS") return next();
   console.log("[DEBUG ZTA-L1] checking path:", req.path, "PUBLIC_PATHS contains:", PUBLIC_PATHS.includes(req.path));
   if (PUBLIC_PATHS.includes(req.path)) return next();
 

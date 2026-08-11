@@ -15,6 +15,7 @@ const BLOCKED_UA_PATTERNS = [
 const REQUIRED_HEADERS = ["user-agent", "accept"];
 
 function deviceMiddleware(req, res, next) {
+  if (req.method === "OPTIONS") return next();
   const ua = req.headers["user-agent"] || "";
 
   // 1 — Block known scanner / attack tool user-agents
