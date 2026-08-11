@@ -12,6 +12,7 @@ export default function Login({ portalType }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -94,6 +95,7 @@ export default function Login({ portalType }) {
         email: cleanEmail,
         password: cleanPassword,
         role: targetRole,
+        company: portal === "employer" ? (companyName.trim() || "General") : "",
         createdAt: new Date().toISOString()
       });
       localStorage.setItem("registeredUsers", JSON.stringify(registeredUsers));
@@ -102,7 +104,12 @@ export default function Login({ portalType }) {
       fetch(`${API}/api/auth/register-sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: cleanEmail, role: targetRole })
+        body: JSON.stringify({
+          name: name.trim(),
+          email: cleanEmail,
+          role: targetRole,
+          company: portal === "employer" ? (companyName.trim() || "General") : ""
+        })
       }).catch(err => console.warn("Backend register sync failed:", err));
 
       setSuccess("Account registered successfully! You can now sign in.");
@@ -138,11 +145,20 @@ export default function Login({ portalType }) {
       sessionStorage.setItem("ztaAnonymizedHash", Math.random().toString(36).substring(2, 10));
       sessionStorage.setItem("ztaDemographicProtection", "Active - 14 Categories Redacted");
 
+      if (targetRole === "admin") {
+        sessionStorage.setItem("recruiterCompany", existingUser?.company || "General");
+      }
+
       // Sync user to backend database on login
       fetch(`${API}/api/auth/register-sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: activeName, email: cleanEmail, role: targetRole })
+        body: JSON.stringify({
+          name: activeName,
+          email: cleanEmail,
+          role: targetRole,
+          company: targetRole === "admin" ? (existingUser?.company || "General") : ""
+        })
       }).catch(err => console.warn("Backend login sync failed:", err));
 
       if (targetRole === "admin") {
@@ -461,6 +477,20 @@ export default function Login({ portalType }) {
                   placeholder="Re-enter your password"
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
+            {isSignUp && portal === "employer" && (
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#6b6b90", marginBottom: "6px", display: "block", letterSpacing: "0.05em" }}>COMPANY NAME</label>
+                <input
+                  className="input-field"
+                  type="text"
+                  placeholder="e.g. Google, Amazon, Microsoft"
+                  value={companyName}
+                  onChange={e => setCompanyName(e.target.value)}
                   required
                 />
               </div>

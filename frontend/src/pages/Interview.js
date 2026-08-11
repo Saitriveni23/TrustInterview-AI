@@ -348,7 +348,11 @@ export default function Interview() {
     try {
       const avg = allAnswers.length ? (allAnswers.reduce((s, a) => s + (a.score || 0), 0) / allAnswers.length) : 0;
       await axios.post(`${BACKEND}/api/interview/record-score`, {
-        email: candidateEmail, name: candidateName, score: parseFloat(avg.toFixed(2))
+        email: candidateEmail,
+        name: candidateName,
+        score: parseFloat(avg.toFixed(2)),
+        company: companyName || "General",
+        jobRole: jobRole || "AI Specialist"
       }, { headers: ztaHeaders({ "Content-Type": "application/json" }) });
     } catch (e) { console.warn("Score record failed:", e.message); }
 

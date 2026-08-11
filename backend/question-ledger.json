@@ -4,24 +4,32 @@
       "Describe a complex technical challenge you faced in AI Research Associate and how you resolved it.",
       "What design patterns have you applied in AI Research Associate projects?",
       "How do you ensure code quality and testability in your work?",
-      "Tell me about a time when you led a team through a difficult technical decision.",
-      "Describe a situation where you disagreed with a colleague's approach and how you handled it.",
-      "If your system experienced an outage 30 minutes before a critical demo, what would you do?",
-      "How would you onboard and mentor a junior engineer joining your team?"
+      "Tell me about a time when you led a team through a difficult technical decision."
     ],
     "hashes": [
       "44fbfb602b4db173",
       "2564cc3f6426a072",
       "1c3725ad7c173f7f",
-      "3bdfc0e676b67cb2",
-      "c248fe4d71756a30",
-      "6f1e6e42d0818093",
-      "60024049e734eb67"
+      "3bdfc0e676b67cb2"
     ],
-    "totalSessions": 1,
+    "totalSessions": 2,
     "name": "SAI PRANAVI A P",
-    "avgScore": 8.2,
+    "avgScore": 7.35,
     "bestScore": 8.2,
-    "lastSession": "2026-08-11T08:07:19.734Z"
+    "lastSession": "2026-08-11T11:00:00.000Z",
+    "sessions": [
+      {
+        "company": "Google",
+        "score": 8.2,
+        "jobRole": "AI Specialist",
+        "date": "2026-08-11T10:00:00.000Z"
+      },
+      {
+        "company": "Microsoft",
+        "score": 6.5,
+        "jobRole": "Software Engineer",
+        "date": "2026-08-11T11:00:00.000Z"
+      }
+    ]
   }
 }

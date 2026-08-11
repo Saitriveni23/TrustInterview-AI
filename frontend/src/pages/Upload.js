@@ -245,7 +245,8 @@ export default function Upload({ viewRole }) {
   async function fetchLeaderboard() {
     setLoadingLeaderboard(true);
     try {
-      const res = await fetch(`${API}/api/interview/leaderboard`);
+      const comp = sessionStorage.getItem("recruiterCompany") || "General";
+      const res = await fetch(`${API}/api/interview/leaderboard?company=${encodeURIComponent(comp)}`);
       const data = await res.json();
       if (data.success) {
         setLeaderboard(data.leaderboard || []);
@@ -728,7 +729,7 @@ export default function Upload({ viewRole }) {
                 </span>
                 <h1 style={{ display: "flex", gap: "12px", alignItems: "baseline", margin: "10px 0 6px", position: "relative" }}>
                   <span className="gradient-title-main">
-                    {currentSidebarTab === "dashboard" ? (role === "admin" ? "Recruiter command console" : (selectedCompanyData ? selectedCompanyData.name : "Placements 2025-26")) : (
+                    {currentSidebarTab === "dashboard" ? (role === "admin" ? `Recruiter command console (${sessionStorage.getItem("recruiterCompany") || "General"})` : (selectedCompanyData ? selectedCompanyData.name : "Placements 2025-26")) : (
                       currentSidebarTab === "prep" ? "Preparation Hub" :
                       currentSidebarTab === "mock" ? "Practice Mock Sandbox" :
                       currentSidebarTab === "calendar" ? "Placements Schedule" :
@@ -964,7 +965,17 @@ export default function Upload({ viewRole }) {
                                     {cand.name.charAt(0).toUpperCase()}
                                   </div>
                                   <div>
-                                    <div style={{ color: "#f0f0ff", fontWeight: 700 }}>{cand.name}</div>
+                                    <div style={{ color: "#f0f0ff", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+                                      {cand.name}
+                                      {cand.interviewCompany && (
+                                        <span style={{
+                                          fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
+                                          background: "rgba(139, 92, 246, 0.15)", color: "#c4b5fd", border: "1px solid rgba(139, 92, 246, 0.25)"
+                                        }}>
+                                          {cand.interviewCompany}
+                                        </span>
+                                      )}
+                                    </div>
                                     <div style={{ color: "#4a4a6a", fontSize: "11px" }}>{cand.email}</div>
                                   </div>
                                 </td>

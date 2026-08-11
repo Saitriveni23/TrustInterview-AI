@@ -217,7 +217,8 @@ router.post("/notify-students", async (req, res) => {
 // ── GET /api/interview/leaderboard ────────────────────────────────────────────
 router.get("/leaderboard", (req, res) => {
   try {
-    const board = getLeaderboard();
+    const company = req.query.company || "";
+    const board = getLeaderboard(company);
     res.json({ success: true, leaderboard: board });
   } catch (err) {
     console.error("[Leaderboard Error]", err.message);
@@ -228,9 +229,9 @@ router.get("/leaderboard", (req, res) => {
 // ── POST /api/interview/record-score ─────────────────────────────────────────
 router.post("/record-score", (req, res) => {
   try {
-    const { email, name, score } = req.body;
+    const { email, name, score, company, jobRole } = req.body;
     if (!email || score === undefined) return res.status(400).json({ error: "email and score are required." });
-    recordScore(email, name, parseFloat(score));
+    recordScore(email, name, parseFloat(score), company, jobRole);
     res.json({ success: true });
   } catch (err) {
     console.error("[Record Score Error]", err.message);
