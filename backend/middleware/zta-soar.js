@@ -67,7 +67,31 @@ function soarMiddleware(req, res, next) {
   next();
 }
 
+const explicitlyBlockedIPs = new Set();
+const ipBlockedReasons = new Map();
+
+function blockIP(ip, reason) {
+  explicitlyBlockedIPs.add(ip);
+  ipBlockedReasons.set(ip, reason);
+  const record = getThreatRecord(ip);
+  record.blockedUntil = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+}
+
+function unblockIP(ip) {
+  explicitlyBlockedIPs.delete(ip);
+  ipBlockedReasons.delete(ip);
+  const record = ipThreatMap.get(ip);
+  if (record) {
+    record.blockedUntil = 0;
+    record.bad4xx = 0;
+    record.errors = 0;
+  }
+}
+
 function getThreatLevel(ip) {
+  if (explicitlyBlockedIPs.has(ip)) {
+    return { level: "critical", details: [ipBlockedReasons.get(ip) || "FRAUD_DETECTED"] };
+  }
   if (ip === "::1" || ip === "127.0.0.1" || ip.endsWith("127.0.0.1")) {
     return { level: "low", details: [] };
   }
@@ -91,9 +115,11 @@ setInterval(() => {
   const now = Date.now();
   for (const [ip, r] of ipThreatMap) {
     if (now - r.windowStart > WINDOW_MS && r.blockedUntil < now) {
-      ipThreatMap.delete(ip);
+      if (!explicitlyBlockedIPs.has(ip)) {
+        ipThreatMap.delete(ip);
+      }
     }
   }
 }, 15 * 60 * 1000);
 
-module.exports = { soarMiddleware, getThreatLevel };
+module.exports = { soarMiddleware, getThreatLevel, blockIP, unblockIP };

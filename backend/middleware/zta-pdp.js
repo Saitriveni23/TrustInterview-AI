@@ -8,12 +8,15 @@
 
 // Policy table: route prefix → rules
 const ROUTE_POLICIES = {
-  "/api/auth":       { requireSession: false, allowedMethods: ["POST", "GET"] },
-  "/api/health":     { requireSession: false, allowedMethods: ["GET"] },
-  "/api/zta-status": { requireSession: false, allowedMethods: ["GET"] },
-  "/api/resume":     { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
-  "/api/interview":  { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
-  "/api/evaluate":   { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
+  "/api/auth":             { requireSession: false, allowedMethods: ["POST", "GET"] },
+  "/api/health":           { requireSession: false, allowedMethods: ["GET"] },
+  "/api/zta-status/block": { requireSession: false, allowedMethods: ["POST"] },
+  "/api/zta-status/reset": { requireSession: false, allowedMethods: ["POST"] },
+  "/api/zta-status":       { requireSession: false, allowedMethods: ["GET"] },
+  "/api/resume":           { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
+  "/api/interview/leaderboard": { requireSession: false, allowedMethods: ["GET"] },
+  "/api/interview":        { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
+  "/api/evaluate":         { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
 };
 
 function matchPolicy(path) {

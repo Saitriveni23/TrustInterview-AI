@@ -8,7 +8,7 @@ const session   = require("express-session");
 const { identityMiddleware, generateSession } = require("./middleware/zta-identity");
 const { deviceMiddleware }                    = require("./middleware/zta-device");
 const { auditMiddleware }                     = require("./middleware/zta-audit");
-const { soarMiddleware, getThreatLevel }      = require("./middleware/zta-soar");
+const { soarMiddleware, getThreatLevel, blockIP, unblockIP }      = require("./middleware/zta-soar");
 const { governanceMiddleware }                = require("./middleware/zta-governance");
 const { pdpMiddleware }                       = require("./middleware/zta-pdp");
 const { threatIntelMiddleware }               = require("./middleware/zta-threat-intel");
@@ -201,6 +201,19 @@ app.get("/api/zta-status", (req, res) => {
       { id: "L13", name: "Hallucination & Fact Checker", status: fraudDetected ? "BLOCKED" : (ZTA_ON ? "active" : "DISABLED"), color: "#EAB308" },
     ],
   });
+});
+
+app.post("/api/zta-status/block", express.json(), (req, res) => {
+  const { reason } = req.body;
+  blockIP(req.ip, reason || "FRAUD_DETECTED");
+  console.warn(`[ZTA-L7] Blocked candidate IP: ${req.ip} for: ${reason}`);
+  res.json({ success: true, message: `IP ${req.ip} has been blocked.` });
+});
+
+app.post("/api/zta-status/reset", (req, res) => {
+  unblockIP(req.ip);
+  console.log(`[ZTA-L7] Reset block status for IP: ${req.ip}`);
+  res.json({ success: true, message: `IP ${req.ip} has been unblocked.` });
 });
 
 app.use((req, res) => res.status(404).json({ error: "Route not found." }));

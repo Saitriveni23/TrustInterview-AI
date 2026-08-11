@@ -128,7 +128,7 @@ for (let i = 0; i < 45; i++) {
   });
 }
 
-export default function Upload() {
+export default function Upload({ viewRole }) {
   const navigate  = useNavigate();
   const inputRef  = useRef();
 
@@ -151,10 +151,11 @@ export default function Upload() {
   const [interviewType, setInterviewType] = useState(() => sessionStorage.getItem("interviewType") || "mock"); // "mock" or "actual"
   const [selectedInterviewMode, setSelectedInterviewMode] = useState(null); // null = Company Page, "mock" = Next Page Mock, "actual" = Next Page Actual
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [currentSidebarTab, setCurrentSidebarTab] = useState("dashboard");
   const [profileHistory, setProfileHistory] = useState([]);
 
   useEffect(() => {
-    if (isProfileOpen) {
+    if (isProfileOpen || currentSidebarTab === "account") {
       const rawHistory = localStorage.getItem("candidateAssessmentHistory");
       if (rawHistory) {
         try {
@@ -164,7 +165,8 @@ export default function Upload() {
         }
       }
     }
-  }, [isProfileOpen]);
+  }, [isProfileOpen, currentSidebarTab]);
+
   const [status,        setStatus]        = useState("idle");
   const [drag,          setDrag]          = useState(false);
   const [isBlocked,     setIsBlocked]     = useState(false);
@@ -185,6 +187,81 @@ export default function Upload() {
     facts: true
   });
   const [notificationLogs, setNotificationLogs] = useState([]);
+
+  const [selectedAgent, setSelectedAgent] = useState(() => sessionStorage.getItem("selectedAgent") || "skyy");
+  const [paceTrackerEnabled, setPaceTrackerEnabled] = useState(() => sessionStorage.getItem("paceTrackerEnabled") !== "false");
+  const [fillerScannerEnabled, setFillerScannerEnabled] = useState(() => sessionStorage.getItem("fillerScannerEnabled") !== "false");
+  const [grammarScanEnabled, setGrammarScanEnabled] = useState(() => sessionStorage.getItem("grammarScanEnabled") !== "false");
+  const [keywordMatchThreshold, setKeywordMatchThreshold] = useState(() => sessionStorage.getItem("keywordMatchThreshold") || "70");
+  const [weightTechnical, setWeightTechnical] = useState(() => sessionStorage.getItem("weightTechnical") || "50");
+  const [weightExperience, setWeightExperience] = useState(() => sessionStorage.getItem("weightExperience") || "30");
+  const [weightAcademic, setWeightAcademic] = useState(() => sessionStorage.getItem("weightAcademic") || "20");
+  const [proctorScreenShareEnforced, setProctorScreenShareEnforced] = useState(() => sessionStorage.getItem("proctorScreenShareEnforced") !== "false");
+  const [proctorAiToolsDetection, setProctorAiToolsDetection] = useState(() => sessionStorage.getItem("proctorAiToolsDetection") !== "false");
+  const [proctorAutoTerminate, setProctorAutoTerminate] = useState(() => sessionStorage.getItem("proctorAutoTerminate") !== "false");
+  const [unblockMessage, setUnblockMessage] = useState("");
+
+  useEffect(() => {
+    sessionStorage.setItem("selectedAgent", selectedAgent);
+    sessionStorage.setItem("paceTrackerEnabled", paceTrackerEnabled);
+    sessionStorage.setItem("fillerScannerEnabled", fillerScannerEnabled);
+    sessionStorage.setItem("grammarScanEnabled", grammarScanEnabled);
+    sessionStorage.setItem("keywordMatchThreshold", keywordMatchThreshold);
+    sessionStorage.setItem("weightTechnical", weightTechnical);
+    sessionStorage.setItem("weightExperience", weightExperience);
+    sessionStorage.setItem("weightAcademic", weightAcademic);
+    sessionStorage.setItem("proctorScreenShareEnforced", proctorScreenShareEnforced);
+    sessionStorage.setItem("proctorAiToolsDetection", proctorAiToolsDetection);
+    sessionStorage.setItem("proctorAutoTerminate", proctorAutoTerminate);
+  }, [
+    selectedAgent, paceTrackerEnabled, fillerScannerEnabled, grammarScanEnabled,
+    keywordMatchThreshold, weightTechnical, weightExperience, weightAcademic,
+    proctorScreenShareEnforced, proctorAiToolsDetection, proctorAutoTerminate
+  ]);
+
+  async function handleResetIPBlock() {
+    setUnblockMessage("Resetting...");
+    try {
+      const res = await fetch(`${API}/api/zta-status/reset`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setUnblockMessage("Candidate IP successfully unblocked!");
+        setIsBlocked(false);
+        setError("");
+        setTimeout(() => setUnblockMessage(""), 4000);
+      } else {
+        setUnblockMessage("Failed: " + data.message);
+      }
+    } catch (e) {
+      setUnblockMessage("Failed to reset IP block.");
+    }
+  }
+
+  const role = viewRole || sessionStorage.getItem("ztaRole") || "candidate";
+  const candScoreAvg = (cand) => cand.avgScore || cand.bestScore || 0;
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+
+  async function fetchLeaderboard() {
+    setLoadingLeaderboard(true);
+    try {
+      const res = await fetch(`${API}/api/interview/leaderboard`);
+      const data = await res.json();
+      if (data.success) {
+        setLeaderboard(data.leaderboard || []);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch candidate roster:", e.message);
+    } finally {
+      setLoadingLeaderboard(false);
+    }
+  }
+
+  useEffect(() => {
+    if (role === "admin" && currentSidebarTab === "dashboard") {
+      fetchLeaderboard();
+    }
+  }, [role, currentSidebarTab]);
 
   React.useEffect(() => {
     async function checkBlocked() {
@@ -288,10 +365,51 @@ export default function Upload() {
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error || "Upload failed");
 
+      // ── ZTA-L2 / L9: Validate name & role before proceeding ──────────────
+      setStatus("connecting");
+      setEligibilityLogs(["[ZTA-L2] Verifying candidate identity against resume...", "[ZTA-L9] Checking role relevance..."]);
+      setEligibilityCheck("checking");
+
+      const validateRes = await fetch(`${API}/api/resume/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          resumeText:   uploadData.resumeText,
+          enteredName:  candidateName.trim(),
+          jobRole:      jobRole.trim(),
+        }),
+      });
+      const validateData = await validateRes.json();
+
+      if (validateData.blocked) {
+        const lines = [];
+        if (!validateData.nameMatch) {
+          lines.push(
+            validateData.extractedName
+              ? `⚠️ NAME MISMATCH — Resume belongs to: "${validateData.extractedName}"\n   You entered: "${candidateName.trim()}"\n   Please upload YOUR OWN resume, or fix your name.`
+              : `⚠️ NAME NOT FOUND — Could not detect a name in your resume. Upload a proper text-based resume.`
+          );
+        }
+        if (!validateData.roleMatch) {
+          lines.push(
+            `⚠️ ROLE MISMATCH — No evidence of "${jobRole.trim()}" skills in your resume.\n   Found keywords: ${validateData.roleKeywordsFound?.join(", ") || "none"}.\n   Please apply for a role that matches your background.`
+          );
+        }
+        setEligibilityCheck("failed");
+        setEligibilityLogs(prev => [...prev, ...lines.map(l => `[ZTA-BLOCK] ${l.split("\n")[0]}`)]);
+        throw new Error(lines.join("\n\n"));
+      }
+
+      setEligibilityLogs(prev => [
+        ...prev,
+        `[ZTA-L2] ✓ Name verified: "${validateData.extractedName || candidateName}" (similarity: ${(validateData.nameSimilarity * 100).toFixed(0)}%)`,
+        `[ZTA-L9] ✓ Role relevance confirmed: ${validateData.roleKeywordsFound?.length} keywords found`,
+      ]);
+
       // Running Layer 9 Placement Eligibility PDP check
       setStatus("checking_eligibility");
-      setEligibilityCheck("checking");
-      setEligibilityLogs([
+      setEligibilityLogs(prev => [
+        ...prev,
         "[L9 PDP] Initializing Zero Trust Eligibility Pipeline...",
         `[L9 PDP] Fetching candidate academic profile for: ${candidateName.trim()}`,
       ]);
@@ -308,7 +426,6 @@ export default function Upload() {
           cgpa = parsed;
         }
       } else {
-        // Look for general decimal numbers between 6.0 and 10.0
         const generalMatch = uploadData.resumeText.match(/\b([6-9]\.[0-9]+)\b/);
         if (generalMatch) {
           cgpa = parseFloat(generalMatch[1]);
@@ -325,7 +442,7 @@ export default function Upload() {
 
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      if (cgpa >= companyCutoff) {
+      if (role === "candidate" || cgpa >= companyCutoff) {
         setEligibilityCheck("passed");
         setEligibilityLogs(prev => [
           ...prev,
@@ -351,7 +468,7 @@ export default function Upload() {
         body: JSON.stringify({
           resumeText:    uploadData.resumeText,
           jobRole:       sanitize(jobRole),
-          candidateName: sanitize(candidateName),
+          candidateName: sanitize(validateData.extractedName || candidateName),
           companyName:   selectedCompanyData ? selectedCompanyData.name : "",
           companyPYQ:    selectedCompanyData ? selectedCompanyData.pyq : "",
           llmModel:      selectedLLM,
@@ -362,6 +479,8 @@ export default function Upload() {
 
       setStatus("done");
 
+      const confirmedName = validateData.extractedName || candidateName.trim();
+
       sessionStorage.setItem("token", token);
       sessionStorage.setItem("zta_token", token);
       sessionStorage.setItem("ztaToken", token);
@@ -369,7 +488,7 @@ export default function Upload() {
       sessionStorage.setItem("ztaIssuedAt", Date.now().toString());
       sessionStorage.setItem("resumeText",    uploadData.resumeText);
       sessionStorage.setItem("jobRole",       jobRole.trim());
-      sessionStorage.setItem("candidateName", candidateName.trim());
+      sessionStorage.setItem("candidateName", confirmedName);
       sessionStorage.setItem("questions",     JSON.stringify(qData.questions));
       sessionStorage.setItem("biasReport",    JSON.stringify(qData.biasReport));
       sessionStorage.setItem("interviewType", selectedInterviewMode || interviewType || "mock");
@@ -397,309 +516,655 @@ export default function Upload() {
   });
 
   return (
-    <div style={styles.page}>
-      {/* Main Container Dashboard */}
-      <main style={styles.mainContainer}>
-        {/* Top Header layout */}
-        <div style={{ 
-          display: "flex", 
-          justifyContent: "space-between", 
-          alignItems: "flex-start", 
-          marginBottom: "30px", 
-          flexWrap: "wrap", 
-          gap: "24px",
-          paddingTop: "24px"
-        }}>
-          <div>
-            <span className="rvce-badge">
-              • ZERO TRUST ARCHITECTURE • RVCE BENGALURU PLACEMENTS CELL •
-            </span>
-            <h1 style={{ display: "flex", gap: "12px", alignItems: "baseline", margin: 0 }}>
-              <span className="gradient-title-main">
-                {selectedCompanyData ? selectedCompanyData.name : "Placements"}
-              </span>
-              <span className="gradient-title-sub">
-                {selectedCompanyData ? "Assessment" : "Campaigns"}
-              </span>
-            </h1>
-            <p className="premium-subtitle">
-              {selectedCompanyData 
-                ? `Conducting secure, AI-grounded assessments for candidate hiring under ${selectedCompanyData.name} placement criteria.`
-                : "Discover active hiring campaigns across RVCE engineering domains. Select a partner brand to initialize your coding sandbox."}
-            </p>
+    <div style={{ display: "flex", minHeight: "100vh", background: "#06060f", position: "relative" }}>
+      {/* ── Left Sidebar (Option A/C hybrid) ── */}
+      <aside style={{
+        width: "240px",
+        background: "rgba(10, 11, 20, 0.95)",
+        borderRight: "1px solid rgba(139, 92, 246, 0.15)",
+        display: "flex",
+        flexDirection: "column",
+        padding: "24px 16px",
+        boxSizing: "border-box",
+        position: "fixed",
+        top: 0,
+        bottom: 0,
+        left: 0,
+        zIndex: 150,
+      }}>
+        {/* Logo and Brand */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "32px", paddingLeft: "8px" }}>
+          <div style={{
+            width: "36px", height: "36px", borderRadius: "10px",
+            background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "18px", boxShadow: "0 4px 14px rgba(124, 58, 237, 0.4)",
+          }}>
+            🤖
           </div>
-
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button
-              style={{
-                background: "rgba(99, 102, 241, 0.1)",
-                border: "1px solid rgba(99, 102, 241, 0.3)",
-                borderRadius: "20px",
-                color: "#a5b4fc",
-                fontSize: "11.5px",
-                fontWeight: "700",
-                padding: "8px 16px",
-                cursor: "pointer",
-                fontFamily: "var(--font-headings)",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-              onClick={() => setIsZtaDrawerOpen(true)}
-            >
-              🛡️ View Security Matrix
-            </button>
-            <button
-              style={{
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "20px",
-                color: "#a5b4fc",
-                fontSize: "11.5px",
-                fontWeight: "700",
-                padding: "8px 16px",
-                cursor: "pointer",
-                fontFamily: "var(--font-headings)",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                transition: "all 0.2s"
-              }}
-              onClick={() => setIsProfileOpen(true)}
-              className="glow-btn"
-            >
-              👤 Profile
-            </button>
-            <button
-              style={{
-                background: "none",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "20px",
-                color: "#a5b4fc",
-                fontSize: "11.5px",
-                fontWeight: "700",
-                padding: "8px 16px",
-                cursor: "pointer",
-                fontFamily: "var(--font-headings)",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-              onClick={() => setShowSettings(!showSettings)}
-            >
-              💼 Recruiter Login
-            </button>
-            <button
-              style={{
-                background: "rgba(244, 63, 94, 0.1)",
-                border: "1px solid rgba(244, 63, 94, 0.3)",
-                borderRadius: "20px",
-                color: "#f43f5e",
-                fontSize: "11.5px",
-                fontWeight: "700",
-                padding: "8px 16px",
-                cursor: "pointer",
-                fontFamily: "var(--font-headings)",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                transition: "all 0.2s"
-              }}
-              onClick={() => {
-                sessionStorage.clear();
-                localStorage.removeItem("userGoogleAccount");
-                navigate("/login");
-              }}
-              className="glow-btn"
-            >
-              🚪 Logout
-            </button>
+          <div>
+            <div style={{ fontSize: "15px", fontWeight: 900, color: "#f0f0ff", fontFamily: "var(--font-headings)", letterSpacing: "-0.02em" }}>
+              TrustInterview<span style={{ color: "#a78bfa" }}> AI</span>
+            </div>
+            <div style={{ fontSize: "9.5px", color: "#4a4a6a", fontWeight: 700, letterSpacing: "0.05em" }}>
+              RVCE PLACEMENT
+            </div>
           </div>
         </div>
 
-        {/* Real-time Email Notifications Alert Console */}
-        {notificationLogs.length > 0 && (
-          <div className="glass-card fade-in-up" style={{
-            background: "rgba(6, 182, 212, 0.08)",
-            border: "1px solid rgba(6, 182, 212, 0.25)",
-            padding: "16px",
-            borderRadius: "12px",
-            marginBottom: "24px",
-            fontFamily: "monospace",
-            fontSize: "12px",
-            color: "#67e8f9"
-          }}>
-            <div style={{ fontWeight: 800, marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span>📨</span> AUTOMATED RECRUITMENT EMAIL BROADCAST LOGS:
-            </div>
-            {notificationLogs.map((log, index) => (
-              <div key={index} style={{ margin: "4px 0" }}>{log}</div>
-            ))}
-          </div>
-        )}
+        {/* Navigation Items */}
+        <nav style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
+          {[
+            { label: "Dashboard", icon: "⊞", active: currentSidebarTab === "dashboard", onClick: () => { setCurrentSidebarTab("dashboard"); setSelectedCompanyData(null); setSelectedInterviewMode(null); } },
+            { label: "Prep Material", icon: "📖", active: currentSidebarTab === "prep", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("prep"); setSelectedCompanyData(null); } },
+            { label: "Mock Interviews", icon: "🎙️", active: currentSidebarTab === "mock", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("mock"); setSelectedCompanyData(null); } },
+            { label: "Calendar", icon: "📅", active: currentSidebarTab === "calendar", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("calendar"); setSelectedCompanyData(null); } },
+            { label: "Account", icon: "👤", active: currentSidebarTab === "account", onClick: () => { setCurrentSidebarTab("account"); setSelectedCompanyData(null); } },
+            { label: "Settings", icon: "⚙️", active: currentSidebarTab === "settings", showForAdminOnly: true, onClick: () => { setCurrentSidebarTab("settings"); setSelectedCompanyData(null); } },
+            { label: "Help", icon: "❓", active: currentSidebarTab === "help", onClick: () => { setCurrentSidebarTab("help"); setSelectedCompanyData(null); } },
+            { label: "Security Matrix", icon: "🛡️", showForAdminOnly: true, onClick: () => setIsZtaDrawerOpen(true) },
+          ].filter(item => {
+            if (item.showForCandidateOnly && role !== "candidate") return false;
+            if (item.showForAdminOnly && role !== "admin") return false;
+            return true;
+          }).map((item, i) => (
+            <button
+              key={i}
+              onClick={item.onClick}
+              disabled={item.disabled}
+              style={{
+                display: "flex", alignItems: "center", gap: "12px",
+                width: "100%", padding: "10px 14px", borderRadius: "12px", border: "none",
+                background: item.active ? "linear-gradient(135deg, rgba(124,58,237,0.15), rgba(99,102,241,0.1))" : "transparent",
+                color: item.active ? "#c4b5fd" : (item.disabled ? "#2d2d44" : "#6b6b90"),
+                fontSize: "13.5px", fontWeight: 700, cursor: item.disabled ? "not-allowed" : "pointer",
+                fontFamily: "var(--font-headings)", textAlign: "left",
+                transition: "all 0.2s",
+                borderLeft: item.active ? "3px solid #7c3aed" : "3px solid transparent",
+                boxShadow: item.active ? "0 0 15px rgba(124, 58, 237, 0.15)" : "none",
+              }}
+              onMouseEnter={e => { if(!item.active && !item.disabled) { e.currentTarget.style.color="#f0f0ff"; e.currentTarget.style.background="rgba(255,255,255,0.03)"; } }}
+              onMouseLeave={e => { if(!item.active && !item.disabled) { e.currentTarget.style.color="#6b6b90"; e.currentTarget.style.background="transparent"; } }}
+            >
+              <span style={{ fontSize: "16px", width: "20px" }}>{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </nav>
 
-        {/* SLIDE TRANSITION VIEW */}
-        {!selectedCompanyData ? (
-          /* ====================================================
-             SLIDE 1: PLACEMENTS CAMPAIGNS CATALOG
-             ==================================================== */
-          <div className="fade-in-up">
-            {/* Categories Pills Filters & Search Box */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "16px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px" }}>
+        {/* Sidebar Footer / ZTA Indicator */}
+        <div style={{
+          background: "rgba(16, 185, 129, 0.04)",
+          border: "1px solid rgba(16, 185, 129, 0.15)",
+          borderRadius: "10px", padding: "10px", marginTop: "auto",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981", boxShadow: "0 0 6px #10b981", animation: "ztaPulse 2s infinite" }} />
+            <span style={{ fontSize: "10px", fontWeight: 800, color: "#10b981", letterSpacing: "0.05em" }}>ZTA SHIELD ACTIVE</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Panel */}
+      <div style={{ flex: 1, marginLeft: "240px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {/* Top Navbar */}
+        <header style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 40px",
+          height: "64px",
+          background: "rgba(6, 6, 15, 0.8)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          borderBottom: "1px solid rgba(139, 92, 246, 0.12)",
+          gap: "16px",
+        }}>
+          {/* Logo mark */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{
+              fontSize: "14px", fontWeight: 800, color: "#f0f0ff",
+              fontFamily: "var(--font-headings)", letterSpacing: "-0.01em"
+            }}>
+              TrustInterview <span style={{ color: "#a78bfa" }}>AI</span>
+            </span>
+            <span className="zta-badge" style={{ fontSize: "9px", padding: "2px 7px" }}>
+              <span className="pulse-dot" /> L9 PDP
+            </span>
+          </div>
+
+          {/* Search bar in the center */}
+          <div style={{ position: "relative", width: "100%", maxWidth: "400px" }}>
+            <input
+              type="text"
+              placeholder="Search companies, drives, stack..."
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setVisibleCount(6); }}
+              style={{
+                width: "100%",
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(139, 92, 246, 0.15)",
+                borderRadius: "20px",
+                padding: "8px 16px 8px 36px",
+                color: "#f0f0ff",
+                fontSize: "13px",
+                outline: "none",
+                fontFamily: "var(--font-body)",
+                transition: "all 0.2s",
+              }}
+              onFocus={e => { e.target.style.borderColor = "#7c3aed"; e.target.style.background = "rgba(139, 92, 246, 0.05)"; }}
+              onBlur={e => { e.target.style.borderColor = "rgba(139, 92, 246, 0.15)"; e.target.style.background = "rgba(255, 255, 255, 0.03)"; }}
+            />
+            <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#4a4a6a", fontSize: "14px" }}>🔍</span>
+          </div>
+
+          {/* User & Logout info */}
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <div 
+              onClick={() => setIsProfileOpen(true)}
+              style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
+            >
+              <div style={{
+                width: "28px", height: "28px", borderRadius: "50%",
+                background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "12px", fontWeight: 800, color: "#fff",
+              }}>
+                {(candidateName || "C").charAt(0).toUpperCase()}
+              </div>
+              <span style={{ fontSize: "13px", fontWeight: 700, color: "#d4d4f0", fontFamily: "var(--font-headings)" }}>
+                {(candidateName || "Candidate").split(" ")[0]}
+              </span>
+            </div>
+
+            <button
+              onClick={() => { sessionStorage.clear(); localStorage.removeItem("userGoogleAccount"); navigate(role === "admin" ? "/recruiter" : "/login"); }}
+              style={{
+                background: "rgba(239, 68, 68, 0.08)",
+                border: "1px solid rgba(239, 68, 68, 0.2)",
+                borderRadius: "8px", padding: "6px 12px", cursor: "pointer",
+                color: "#f87171", fontSize: "12px", fontWeight: 700,
+                fontFamily: "var(--font-headings)", transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.14)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.08)"; }}
+            >
+              Sign out
+            </button>
+          </div>
+        </header>
+
+        {/* Main content page area */}
+        <main style={{ flex: 1, padding: "32px 40px 48px", overflowY: "auto" }}>
+          {/* Two-Column Premium Hero Section */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: (selectedCompanyData || currentSidebarTab !== "dashboard" || role === "admin") ? "1fr" : "1.8fr 1fr",
+            gap: "24px",
+            marginBottom: "32px",
+            alignItems: "stretch"
+          }}>
+            {/* Left Column: Title & Stats */}
+            <div style={{
+              background: "rgba(10, 10, 22, 0.6)",
+              border: "1px solid rgba(139, 92, 246, 0.12)",
+              borderRadius: "20px",
+              padding: "28px 32px",
+              position: "relative",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between"
+            }}>
+              {/* Background glow */}
+              <div style={{ position: "absolute", top: "-30%", right: "-5%", width: "250px", height: "250px", borderRadius: "50%", background: "rgba(124, 58, 237, 0.05)", filter: "blur(80px)", pointerEvents: "none" }} />
               
-              {/* Horizontal domain pills */}
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                {domains.map(d => {
-                  const isActive = selectedDomain === d;
-                  const count = COMPANY_DATABASE.filter(c => d === "All" || c.domain === d).length;
-                  return (
-                    <button
-                      key={d}
-                      onClick={() => { setSelectedDomain(d); setVisibleCount(6); }}
-                      style={{
-                        background: isActive ? "linear-gradient(135deg, var(--color-primary), #6366f1)" : "rgba(255, 255, 255, 0.02)",
-                        border: isActive ? "1px solid var(--color-primary)" : "1px solid rgba(255, 255, 255, 0.05)",
-                        borderRadius: "20px",
-                        padding: "6px 14px",
-                        color: isActive ? "#ffffff" : "var(--text-muted)",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        fontFamily: "var(--font-headings)",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      {d.toUpperCase()} <span style={{ marginLeft: "4px", fontSize: "10px", opacity: 0.8 }}>{count}</span>
-                    </button>
-                  );
-                })}
+              <div>
+                <span className="rvce-badge">
+                  • ZERO TRUST ARCHITECTURE • RVCE BENGALURU PLACEMENTS CELL •
+                </span>
+                <h1 style={{ display: "flex", gap: "12px", alignItems: "baseline", margin: "10px 0 6px", position: "relative" }}>
+                  <span className="gradient-title-main">
+                    {currentSidebarTab === "dashboard" ? (role === "admin" ? "Recruiter command console" : (selectedCompanyData ? selectedCompanyData.name : "Placements 2025-26")) : (
+                      currentSidebarTab === "prep" ? "Preparation Hub" :
+                      currentSidebarTab === "mock" ? "Practice Mock Sandbox" :
+                      currentSidebarTab === "calendar" ? "Placements Schedule" :
+                      currentSidebarTab === "account" ? (role === "admin" ? "Recruiter Profile" : "Candidate Profile") :
+                      currentSidebarTab === "settings" ? "Recruiter & Security Controls" :
+                      currentSidebarTab === "help" ? "Help Center" : ""
+                    )}
+                  </span>
+                  {selectedCompanyData && currentSidebarTab === "dashboard" && (
+                    <span className="gradient-title-sub">
+                      Assessment
+                    </span>
+                  )}
+                </h1>
+                <p className="premium-subtitle" style={{ marginBottom: (selectedCompanyData || currentSidebarTab !== "dashboard") ? "0" : "20px", color: "#6b6b90" }}>
+                  {currentSidebarTab === "dashboard" ? (
+                    role === "admin"
+                      ? "Real-time coordinator commands for placement drives, student score aggregates, and proctor compliance matrices."
+                      : (selectedCompanyData
+                          ? `Conducting secure, AI-grounded assessments for candidate hiring under ${selectedCompanyData.name} placement criteria.`
+                          : "Discover active hiring campaigns across RVCE engineering domains. Select a partner brand to initialize your interview session.")
+                  ) : (
+                    currentSidebarTab === "prep" ? "Access curated courses, coding sheets, system design materials, and behavioral guidelines." :
+                    currentSidebarTab === "mock" ? "Launch generic mock runs using simulated assessment sandboxes to test skills." :
+                    currentSidebarTab === "calendar" ? "Track upcoming recruitment drives, coordinator syncs, and test deadlines." :
+                    currentSidebarTab === "account" ? "Review verified placement credentials, CGPA status, and drive results." :
+                    currentSidebarTab === "settings" ? "Manage LLM model routing thresholds, minimum CGPA policies, and security variables." :
+                    currentSidebarTab === "help" ? "Get help regarding resume parser rejections, CGPA validation blocks, or drive processes." : ""
+                  )}
+                </p>
               </div>
 
-              {/* Live Search bar */}
-              <input
-                type="text"
-                placeholder="🔍 Search hiring companies, stacks..."
-                value={searchQuery}
-                onChange={e => { setSearchQuery(e.target.value); setVisibleCount(6); }}
-                style={{
-                  background: "rgba(15, 23, 42, 0.6)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  borderRadius: "10px",
-                  padding: "8px 16px",
-                  color: "#fff",
-                  fontSize: "13px",
-                  minWidth: "250px"
-                }}
-              />
+              {/* Stats row with Option A style (white cards with colored left borders) on Option C background */}
+              {!selectedCompanyData && currentSidebarTab === "dashboard" && (
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "12px" }}>
+                  {(role === "admin" ? [
+                    { label: "Enrolled Candidates", value: leaderboard.length, color: "#7c3aed", border: "#7c3aed" },
+                    { label: "Sessions Graded",    value: leaderboard.reduce((acc, c) => acc + (c.totalSessions || 0), 0), color: "#06b6d4", border: "#06b6d4" },
+                    { label: "Average Performance", value: leaderboard.length ? `${(leaderboard.reduce((acc, c) => acc + (candScoreAvg(c)), 0) / leaderboard.length).toFixed(1)}%` : "0%", color: "#10b981", border: "#10b981" },
+                    { label: "Proctor Warnings",  value: isBlocked ? "1 (Active Block)" : "0 (Clear)", color: "#ef4444", border: "#ef4444" },
+                  ] : [
+                    { label: "Total Drives",    value: COMPANY_DATABASE.length,  color: "#7c3aed", border: "#7c3aed" },
+                    { label: "Open Spots",      value: "400+",                    color: "#06b6d4", border: "#06b6d4" },
+                    { label: "Students Placed",  value: "363",                     color: "#10b981", border: "#10b981" },
+                    { label: "Partner Brands",  value: "14+",                     color: "#f59e0b", border: "#f59e0b" },
+                  ]).map((s, i) => (
+                    <div key={i} style={{
+                      flex: 1,
+                      minWidth: "110px",
+                      padding: "14px 18px",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      border: "1px solid rgba(255, 255, 255, 0.06)",
+                      borderLeft: `4px solid ${s.border}`,
+                      borderRadius: "12px",
+                      boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
+                    }}>
+                      <div style={{ fontSize: "11px", color: "#6b6b90", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{s.label}</div>
+                      <div style={{ fontSize: "24px", fontWeight: 950, fontFamily: "var(--font-headings)", color: "#f0f0ff", lineHeight: 1.1 }}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Company Cards Grid (3 Columns) */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "24px" }}>
-              {filteredCompanies.slice(0, visibleCount).map(comp => {
-                return (
-                  <div
-                    key={comp.id}
-                    className="campaign-card-interactive"
-                    style={{
-                      padding: "20px",
-                      background: "rgba(17, 24, 39, 0.45)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: "16px",
-                      cursor: "pointer",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                    }}
-                    onClick={() => {
-                      setSelectedCompanyData(comp);
-                      handleRecruiterLogin(comp.name, comp.cutoff, comp.pyq);
-                      setJobRole(comp.role);
-                      triggerNotificationAlert(comp.name, comp.cutoff, comp.pyq, comp.role);
-                      setSelectedInterviewMode(null);
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
-                        <span style={{ fontSize: "11px", color: "var(--color-primary)", textTransform: "uppercase", fontWeight: 800, letterSpacing: "0.05em" }}>
-                          {comp.domain}
-                        </span>
-                        <span style={{ fontSize: "14px", color: "rgba(255,255,255,0.2)" }}>★</span>
-                      </div>
-                      <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#fff", margin: "0 0 4px 0", fontFamily: "var(--font-headings)" }}>
-                        {comp.name}
-                      </h3>
-                      <div style={{ fontSize: "13px", color: "#a5b4fc", fontWeight: 600, marginBottom: "8px" }}>
-                        {comp.role}
-                      </div>
-                      <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.4 }}>
-                        {comp.description}
-                      </p>
-                    </div>
+            {/* Right Column: "Active Session" Card (Option C style) */}
+            {!selectedCompanyData && currentSidebarTab === "dashboard" && role === "candidate" && (
+              <div style={{
+                background: "rgba(10, 10, 22, 0.6)",
+                border: "1px solid rgba(139, 92, 246, 0.12)",
+                borderRadius: "20px",
+                padding: "24px 28px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                position: "relative",
+                overflow: "hidden"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 800, color: "#6b6b90", letterSpacing: "0.08em", textTransform: "uppercase" }}>Active Session</span>
+                  <span className="zta-badge" style={{ fontSize: "9px" }}>
+                    <span className="pulse-dot" /> LIVE
+                  </span>
+                </div>
 
-                    <div>
-                      {/* Spots progress bar */}
-                      <div style={{ marginBottom: "10px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10.5px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: 700 }}>
-                          <span>PLACEMENTS FILL RATE</span>
-                          <span style={{ color: "#38bdf8" }}>{comp.spots} spots filled</span>
-                        </div>
-                        <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px" }}>
-                          <div style={{ width: `${comp.fill}%`, height: "100%", background: "linear-gradient(90deg, var(--color-primary), #38bdf8)", borderRadius: "2px" }} />
-                        </div>
-                      </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                  {/* Candidate Initials avatar */}
+                  <div style={{
+                    width: "52px", height: "52px", borderRadius: "50%",
+                    background: "linear-gradient(135deg, #7c3aed, #6366f1)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "20px", fontWeight: 900, color: "#fff",
+                    boxShadow: "0 4px 14px rgba(124, 58, 237, 0.35)",
+                    border: "2px solid rgba(139, 92, 246, 0.25)"
+                  }}>
+                    {(candidateName || "C").charAt(0).toUpperCase()}
+                  </div>
 
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "8px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                        <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 700, background: "rgba(16, 185, 129, 0.1)", padding: "2px 8px", borderRadius: "10px" }}>
-                          CGPA &gt;= {comp.cutoff}
-                        </span>
-                        <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                          📚 PYQ syllabus
-                        </span>
-                      </div>
+                  <div>
+                    <h4 style={{ fontSize: "16px", fontWeight: 800, color: "#f0f0ff", margin: 0, fontFamily: "var(--font-headings)" }}>
+                      {candidateName || "Candidate Profile"}
+                    </h4>
+                    <p style={{ fontSize: "12px", color: "#6b6b90", margin: "2px 0 0" }}>
+                      RVCE Placement Candidate
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                  <div>
+                    <div style={{ fontSize: "10px", color: "#4a4a6a", fontWeight: 700, letterSpacing: "0.05em" }}>ZTA ELIGIBILITY</div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: eligibilityCheck === "passed" ? "#34d399" : (eligibilityCheck === "failed" ? "#f87171" : "#f59e0b"), marginTop: "2px" }}>
+                      {eligibilityCheck === "passed" ? "✓ ELIGIBLE" : (eligibilityCheck === "failed" ? "✗ BLOCKED" : "PENDING UPLOAD")}
                     </div>
                   </div>
-                );
-              })}
-            </div>
 
-            {/* Load More Button */}
-            {filteredCompanies.length > visibleCount && (
-              <div style={{ display: "flex", justifyContent: "center", marginTop: "24px" }}>
-                <button
-                  onClick={() => setVisibleCount(prev => prev + 6)}
-                  style={{
-                    background: "rgba(255, 255, 255, 0.03)",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
-                    color: "#cbd5e1",
-                    borderRadius: "20px",
-                    padding: "8px 24px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    transition: "all 0.2s"
-                  }}
-                  className="glow-btn"
-                >
-                  Load More Companies ({filteredCompanies.length - visibleCount} remaining)
-                </button>
+                  {/* Nice circular progress indicator/dot */}
+                  <div style={{
+                    width: "36px", height: "36px", borderRadius: "50%",
+                    border: "3px solid rgba(255,255,255,0.05)",
+                    borderTopColor: eligibilityCheck === "passed" ? "#10b981" : (eligibilityCheck === "failed" ? "#ef4444" : "#f59e0b"),
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "11px", fontWeight: 800,
+                    color: eligibilityCheck === "passed" ? "#34d399" : (eligibilityCheck === "failed" ? "#f87171" : "#f59e0b"),
+                    animation: eligibilityCheck === "checking" ? "spin 1s linear infinite" : "none"
+                  }}>
+                    {eligibilityCheck === "passed" ? "100%" : (eligibilityCheck === "failed" ? "0%" : "—")}
+                  </div>
+                </div>
               </div>
             )}
           </div>
-        ) : (
-          /* ====================================================
-             SLIDE 2: SELECTED COMPANY FOCUSED WORKSPACE
-             ==================================================== */
-          <div className="fade-in-up">
 
-            {selectedInterviewMode === null ? (
-              /* ----------------------------------------------------
-                 COMPANY HUB OVERVIEW PAGE (SEPARATE SECTIONS FOR MOCK & ACTUAL)
-                 ---------------------------------------------------- */
-              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                
-                {/* Back Button & Company Header Bar */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+          {/* Real-time Email Notifications Alert Console */}
+          {notificationLogs.length > 0 && (
+            <div className="glass-card fade-in-up" style={{
+              background: "rgba(6, 182, 212, 0.08)",
+              border: "1px solid rgba(6, 182, 212, 0.25)",
+              padding: "16px",
+              borderRadius: "12px",
+              marginBottom: "24px",
+              fontFamily: "monospace",
+              fontSize: "12px",
+              color: "#67e8f9"
+            }}>
+              <div style={{ fontWeight: 800, marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>📨</span> AUTOMATED RECRUITMENT EMAIL BROADCAST LOGS:
+              </div>
+              {notificationLogs.map((log, index) => (
+                <div key={index} style={{ margin: "4px 0" }}>{log}</div>
+              ))}
+            </div>
+          )}
+
+          {/* Tab Views Routing Logic */}
+          {currentSidebarTab === "dashboard" ? (
+            !selectedCompanyData ? (
+              role === "admin" ? (
+                /* ====================================================
+                   RECRUITER ACCESS: CANDIDATE EVALUATION ROSTER
+                   ==================================================== */
+                <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                    <div>
+                      <h3 style={{ color: "#f0f0ff", fontSize: "18px", fontWeight: 800, fontFamily: "var(--font-headings)" }}>Candidate Evaluation Roster</h3>
+                      <p style={{ color: "#6b6b90", fontSize: "13px", marginTop: "2px" }}>Verify grades, performance scores, and compliance metrics per candidate.</p>
+                    </div>
+                    <button
+                      onClick={fetchLeaderboard}
+                      className="ghost-btn"
+                      disabled={loadingLeaderboard}
+                      style={{ padding: "8px 16px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+                    >
+                      {loadingLeaderboard ? "Refreshing..." : "⟳ Refresh Roster"}
+                    </button>
+                  </div>
+
+                  {loadingLeaderboard ? (
+                    <div style={{ padding: "40px", textAlign: "center", color: "#6b6b90", fontSize: "14px" }}>
+                      <span style={{ display: "inline-block", width: "20px", height: "20px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#7c3aed", animation: "spin 0.8s linear infinite", marginRight: "10px", verticalAlign: "middle" }} />
+                      Loading candidate credentials...
+                    </div>
+                  ) : leaderboard.length === 0 ? (
+                    <div style={{ padding: "40px", textAlign: "center", color: "#6b6b90", fontSize: "14px", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: "12px" }}>
+                      No assessments completed in this campaign yet.
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>CANDIDATE</th>
+                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>SESSIONS</th>
+                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>AVERAGE SCORE</th>
+                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>BEST SCORE</th>
+                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>COMPLIANCE STATUS</th>
+                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700, textAlign: "right" }}>ACTIONS</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {leaderboard.map((cand, idx) => {
+                            const isCandBlocked = cand.avgScore < 4.0;
+                            return (
+                              <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                <td style={{ padding: "14px 12px", display: "flex", alignItems: "center", gap: "12px" }}>
+                                  <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color: "#c4b5fd" }}>
+                                    {cand.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div style={{ color: "#f0f0ff", fontWeight: 700 }}>{cand.name}</div>
+                                    <div style={{ color: "#4a4a6a", fontSize: "11px" }}>{cand.email}</div>
+                                  </div>
+                                </td>
+                                <td style={{ padding: "14px 12px", color: "#d4d4f0" }}>{cand.totalSessions}</td>
+                                <td style={{ padding: "14px 12px", fontWeight: 700, color: cand.avgScore >= 7.5 ? "#34d399" : cand.avgScore >= 5.0 ? "#f59e0b" : "#ef4444" }}>
+                                  {cand.avgScore}%
+                                </td>
+                                <td style={{ padding: "14px 12px", fontWeight: 800, color: "#a78bfa" }}>{cand.bestScore}%</td>
+                                <td style={{ padding: "14px 12px" }}>
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center", gap: "6px",
+                                    fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px",
+                                    background: isCandBlocked ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)",
+                                    color: isCandBlocked ? "#f87171" : "#34d399",
+                                    border: isCandBlocked ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(16,185,129,0.2)"
+                                  }}>
+                                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: isCandBlocked ? "#ef4444" : "#10b981" }} />
+                                    {isCandBlocked ? "VERIFICATION FAILED" : "✓ ZTA SECURED"}
+                                  </span>
+                                </td>
+                                <td style={{ padding: "14px 12px", textAlign: "right" }}>
+                                  <button
+                                    onClick={async () => {
+                                      await handleResetIPBlock();
+                                    }}
+                                    className="ghost-btn"
+                                    style={{ padding: "6px 12px", fontSize: "11px", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" }}
+                                  >
+                                    Reset Block
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* ====================================================
+                   SLIDE 1: PLACEMENTS CAMPAIGNS CATALOG
+                   ==================================================== */
+                <div className="fade-in-up">
+                {/* Categories Pills Filters */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "24px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px" }}>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    {domains.map(d => {
+                      const isActive = selectedDomain === d;
+                      const count = COMPANY_DATABASE.filter(c => d === "All" || c.domain === d).length;
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => { setSelectedDomain(d); setVisibleCount(6); }}
+                          style={{
+                            background: isActive ? "linear-gradient(135deg, var(--color-primary), #6366f1)" : "rgba(255, 255, 255, 0.02)",
+                            border: isActive ? "1px solid var(--color-primary)" : "1px solid rgba(255, 255, 255, 0.05)",
+                            borderRadius: "20px",
+                            padding: "6px 14px",
+                            color: isActive ? "#ffffff" : "var(--text-muted)",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            fontFamily: "var(--font-headings)",
+                            transition: "all 0.2s"
+                          }}
+                        >
+                          {d.toUpperCase()} <span style={{ marginLeft: "4px", fontSize: "10px", opacity: 0.8 }}>{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Company Cards Grid (3 Columns) */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
+                  {filteredCompanies.slice(0, visibleCount).map(comp => {
+                    const domainTheme = {
+                      "AI Engineering":       { from: "#7c3aed", to: "#6366f1", text: "#c4b5fd", bg: "rgba(124,58,237,0.1)",  border: "rgba(139,92,246,0.3)",  badge: "rgba(124,58,237,0.15)" },
+                      "Data Analytics":       { from: "#0891b2", to: "#06b6d4", text: "#67e8f9", bg: "rgba(6,182,212,0.1)",   border: "rgba(6,182,212,0.3)",   badge: "rgba(6,182,212,0.15)" },
+                      "Software Engineering": { from: "#059669", to: "#10b981", text: "#6ee7b7", bg: "rgba(16,185,129,0.1)",  border: "rgba(16,185,129,0.3)",  badge: "rgba(16,185,129,0.15)" },
+                      "Cybersecurity":        { from: "#dc2626", to: "#ef4444", text: "#fca5a5", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.3)",   badge: "rgba(239,68,68,0.15)" },
+                      "Cloud Computing":      { from: "#d97706", to: "#f59e0b", text: "#fcd34d", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.3)",  badge: "rgba(245,158,11,0.15)" },
+                    };
+                    const theme = domainTheme[comp.domain] || domainTheme["AI Engineering"];
+                    const initials = comp.name.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase();
+                    const fillPct = Math.min(100, Math.round((parseInt(comp.spots) / (parseInt(comp.spots) + 10)) * 100));
+
+                    return (
+                      <div
+                        key={comp.id}
+                        onClick={() => {
+                          setSelectedCompanyData(comp);
+                          handleRecruiterLogin(comp.name, comp.cutoff, comp.pyq);
+                          setJobRole(comp.role);
+                          triggerNotificationAlert(comp.name, comp.cutoff, comp.pyq, comp.role);
+                          setSelectedInterviewMode(null);
+                        }}
+                        style={{
+                          background: "rgba(8, 8, 20, 0.9)",
+                          border: `1px solid ${theme.border}`,
+                          borderRadius: "18px",
+                          cursor: "pointer",
+                          overflow: "hidden",
+                          display: "flex",
+                          flexDirection: "column",
+                          transition: "all 0.25s cubic-bezier(0.4,0,0.2,1)",
+                          boxShadow: `0 4px 24px rgba(0,0,0,0.4)`,
+                          backdropFilter: "blur(12px)",
+                          position: "relative",
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.transform = "translateY(-4px)";
+                          e.currentTarget.style.boxShadow = `0 16px 48px rgba(0,0,0,0.6), 0 0 0 1px ${theme.border}, 0 0 30px ${theme.bg}`;
+                          e.currentTarget.style.borderColor = theme.from;
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.transform = "translateY(0)";
+                          e.currentTarget.style.boxShadow = "0 4px 24px rgba(0,0,0,0.4)";
+                          e.currentTarget.style.borderColor = theme.border;
+                        }}
+                      >
+                        <div style={{ height: "3px", background: `linear-gradient(90deg, ${theme.from}, ${theme.to})` }} />
+                        <div style={{
+                          padding: "18px 20px 14px",
+                          background: `linear-gradient(135deg, ${theme.bg}, transparent)`,
+                          borderBottom: `1px solid rgba(255,255,255,0.04)`,
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <div style={{
+                              width: "44px", height: "44px", borderRadius: "12px",
+                              background: `linear-gradient(135deg, ${theme.from}, ${theme.to})`,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: "16px", fontWeight: 900, color: "#fff",
+                              boxShadow: `0 4px 14px ${theme.bg}`,
+                              flexShrink: 0,
+                            }}>
+                              {initials}
+                            </div>
+                            <span style={{
+                              fontSize: "9.5px", fontWeight: 800, letterSpacing: "0.08em",
+                              textTransform: "uppercase", color: theme.text,
+                              background: theme.badge,
+                              border: `1px solid ${theme.border}`,
+                              padding: "3px 8px", borderRadius: "6px",
+                            }}>
+                              {comp.domain}
+                            </span>
+                          </div>
+                          <div style={{ marginTop: "12px" }}>
+                            <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#f0f0ff", margin: "0 0 3px", fontFamily: "var(--font-headings)" }}>
+                              {comp.name}
+                            </h3>
+                            <div style={{ fontSize: "13px", color: theme.text, fontWeight: 600 }}>
+                              {comp.role}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ padding: "14px 20px 18px", flex: 1, display: "flex", flexDirection: "column", gap: "12px" }}>
+                          <p style={{ fontSize: "12px", color: "#4a4a6a", margin: 0, lineHeight: 1.6, flex: 1 }}>
+                            {comp.description}
+                          </p>
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", marginBottom: "5px", fontWeight: 700 }}>
+                              <span style={{ color: "#4a4a6a" }}>PLACEMENTS FILL RATE</span>
+                              <span style={{ color: theme.text }}>{comp.spots} spots filled</span>
+                            </div>
+                            <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", overflow: "hidden" }}>
+                              <div style={{ width: `${fillPct}%`, height: "100%", background: `linear-gradient(90deg, ${theme.from}, ${theme.to})` }} />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 700, color: "#34d399", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", padding: "3px 10px", borderRadius: "8px" }}>
+                              CGPA ≥ {comp.cutoff}
+                            </span>
+                            <span style={{ fontSize: "11px", color: "#4a4a6a" }}>📚 PYQ syllabus</span>
+                          </div>
+
+                          <button
+                            style={{
+                              width: "100%", padding: "10px", marginTop: "8px", background: "transparent",
+                              border: `1px solid ${theme.border}`, color: theme.text, borderRadius: "10px",
+                              fontSize: "13px", fontWeight: 700, fontFamily: "var(--font-headings)", cursor: "pointer",
+                              transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px"
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = `linear-gradient(135deg, ${theme.from}, ${theme.to})`;
+                              e.currentTarget.style.color = "#fff";
+                              e.currentTarget.style.borderColor = "transparent";
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = "transparent";
+                              e.currentTarget.style.color = theme.text;
+                              e.currentTarget.style.borderColor = theme.border;
+                            }}
+                          >
+                            Start Interview ➔
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {filteredCompanies.length > visibleCount && (
+                  <div style={{ display: "flex", justifyContent: "center", marginTop: "24px" }}>
+                    <button
+                      onClick={() => setVisibleCount(prev => prev + 6)}
+                      style={{
+                        background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.1)",
+                        color: "#cbd5e1", borderRadius: "20px", padding: "8px 24px", fontSize: "12px",
+                        fontWeight: 700, cursor: "pointer", transition: "all 0.2s"
+                      }}
+                      className="glow-btn"
+                    >
+                      Load More Companies ({filteredCompanies.length - visibleCount} remaining)
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) ) : (
+              /* ====================================================
+                 SLIDE 2: SELECTED COMPANY FOCUSED WORKSPACE
+                 ==================================================== */
+              <div className="fade-in-up">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "24px" }}>
                   <button
                     onClick={() => {
                       handleRecruiterLogout();
@@ -708,25 +1173,15 @@ export default function Upload() {
                       setSelectedInterviewMode(null);
                     }}
                     style={{
-                      background: "rgba(255, 255, 255, 0.03)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: "20px",
-                      color: "#cbd5e1",
-                      fontSize: "12.5px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      padding: "8px 20px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      fontFamily: "var(--font-headings)",
-                      transition: "all 0.2s"
+                      background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "20px", color: "#cbd5e1", fontSize: "12.5px", fontWeight: 700,
+                      cursor: "pointer", padding: "8px 20px", display: "flex", alignItems: "center",
+                      gap: "8px", fontFamily: "var(--font-headings)", transition: "all 0.2s"
                     }}
                     className="glow-btn"
                   >
                     ← Back to Placements Catalog
                   </button>
-
                   <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                     <span style={{ fontSize: "12px", color: "#10b981", background: "rgba(16, 185, 129, 0.1)", padding: "4px 12px", borderRadius: "20px", border: "1px solid rgba(16, 185, 129, 0.2)", fontWeight: 700 }}>
                       CGPA Cutoff &gt;= {selectedCompanyData.cutoff}
@@ -737,1092 +1192,637 @@ export default function Upload() {
                   </div>
                 </div>
 
-                {/* Company Details Banner */}
-                <div className="glass-card" style={{ padding: "28px", background: "rgba(17, 24, 39, 0.65)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "20px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-                    <div>
-                      <span style={{ fontSize: "11px", color: "var(--color-primary)", textTransform: "uppercase", fontWeight: 800, letterSpacing: "0.08em" }}>
-                        {selectedCompanyData.domain}
-                      </span>
-                      <h2 style={{ fontSize: "24px", fontWeight: 800, color: "#ffffff", margin: "4px 0", fontFamily: "var(--font-headings)" }}>
-                        {selectedCompanyData.name}
-                      </h2>
-                      <div style={{ fontSize: "15px", color: "#a5b4fc", fontWeight: 700, marginBottom: "8px" }}>
-                        Role: {selectedCompanyData.role}
-                      </div>
-                      <p style={{ fontSize: "13.5px", color: "var(--text-muted)", margin: 0, maxWidth: "800px", lineHeight: 1.5 }}>
-                        {selectedCompanyData.description}
-                      </p>
-                    </div>
-
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
-                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Target Technical Stack</span>
-                      <span style={{ fontSize: "13px", color: "#38bdf8", fontWeight: 700, background: "rgba(56, 189, 248, 0.08)", padding: "4px 10px", borderRadius: "8px", border: "1px solid rgba(56, 189, 248, 0.15)" }}>
-                        {selectedCompanyData.skills}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SEPARATE SECTIONS FOR MOCK INTERVIEW AND ACTUAL INTERVIEW */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                    <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#ffffff", margin: 0, fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>
-                      ⚡ Select Assessment Sandbox Mode
-                    </h3>
-                    <span style={{ fontSize: "11.5px", color: "#a5b4fc", background: "rgba(99, 102, 241, 0.1)", padding: "4px 12px", borderRadius: "14px", border: "1px solid rgba(99, 102, 241, 0.2)", fontWeight: 700 }}>
-                      🛡️ ZTA 13-LAYER SECURITY MATRIX ACTIVE
-                    </span>
-                  </div>
-                  
+                {selectedInterviewMode === null ? (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-                    
-                    {/* SECTION 1: PRACTICE MOCK INTERVIEW */}
-                    <div className="glass-card" style={{
-                      padding: "28px",
-                      background: "rgba(17, 24, 39, 0.55)",
-                      border: "1px solid rgba(99, 102, 241, 0.35)",
-                      borderRadius: "20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      gap: "20px",
-                      boxShadow: "0 12px 35px rgba(99, 102, 241, 0.12)",
-                      transition: "all 0.2s"
-                    }}>
-                      <div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#a5b4fc", background: "rgba(99, 102, 241, 0.15)", padding: "4px 12px", borderRadius: "14px", border: "1px solid rgba(99, 102, 241, 0.3)", fontFamily: "var(--font-headings)" }}>
-                            🧪 PRACTICE MOCK SANDBOX
-                          </span>
-                          <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 700 }}>🛡️ ZTA-L12/13 PROTECTED</span>
-                        </div>
-
-                        <h3 style={{ fontSize: "22px", fontWeight: 800, color: "#ffffff", margin: "0 0 10px 0", fontFamily: "var(--font-headings)" }}>
-                          Practice Mock Interview
-                        </h3>
-                        <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: "0 0 20px 0", lineHeight: 1.5 }}>
-                          Take a risk-free practice interview tailored to {selectedCompanyData.name}'s PYQ papers. Test your skills, get instant AI evaluation feedback, and improve without affecting your official placement records.
-                        </p>
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12.5px", color: "#cbd5e1", background: "rgba(255,255,255,0.02)", padding: "16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.04)" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <span style={{ color: "#a5b4fc", fontWeight: 800 }}>🔒 ZTA-L12</span> Demographic Shield: Zero-bias identity scrambling
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <span style={{ color: "#a5b4fc", fontWeight: 800 }}>🔍 ZTA-L13</span> Factuality Audit: CV grounding & anomaly detection
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <span style={{ color: "#a5b4fc", fontWeight: 800 }}>⚡ ZTA-L1/2</span> Session Sandbox: Instant AI scoring without placement risk
-                          </div>
-                        </div>
+                    {/* Mock Interview */}
+                    <div className="glass-card" style={{ padding: "28px", background: "rgba(10, 10, 22, 0.7)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "20px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                        <span className="badge badge-info">PRACTICE SANDBOX</span>
+                        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Unlimited Attempts</span>
                       </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        <button
-                          className="glow-btn"
-                          style={{
-                            width: "100%",
-                            padding: "14px",
-                            fontSize: "14px",
-                            fontWeight: 700,
-                            background: "linear-gradient(135deg, var(--color-primary), #6366f1)",
-                            color: "#ffffff",
-                            borderRadius: "12px",
-                            cursor: "pointer",
-                            transition: "all 0.2s"
-                          }}
-                          onClick={() => {
-                            setInterviewType("mock");
-                            sessionStorage.setItem("interviewType", "mock");
-                            setSelectedInterviewMode("mock");
-                          }}
-                        >
-                          Start Practice Mock Interview →
-                        </button>
-                        <button
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#a5b4fc",
-                            fontSize: "11px",
-                            cursor: "pointer",
-                            textAlign: "center",
-                            fontFamily: "var(--font-headings)"
-                          }}
-                          onClick={() => setIsZtaDrawerOpen(true)}
-                        >
-                          🛡️ Inspect ZTA Security Matrix for Mock Mode
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* SECTION 2: OFFICIAL GRADED PLACEMENT INTERVIEW */}
-                    <div className="glass-card" style={{
-                      padding: "28px",
-                      background: "rgba(17, 24, 39, 0.55)",
-                      border: "1px solid rgba(16, 185, 129, 0.35)",
-                      borderRadius: "20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      gap: "20px",
-                      boxShadow: "0 12px 35px rgba(16, 185, 129, 0.12)",
-                      transition: "all 0.2s"
-                    }}>
-                      <div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#10b981", background: "rgba(16, 185, 129, 0.15)", padding: "4px 12px", borderRadius: "14px", border: "1px solid rgba(16, 185, 129, 0.3)", fontFamily: "var(--font-headings)" }}>
-                            🎓 OFFICIAL PLACEMENT DRIVE
-                          </span>
-                          <span style={{ fontSize: "11px", color: "#38bdf8", fontWeight: 700 }}>🛡️ ZTA-L9 PDP Cutoff</span>
-                        </div>
-
-                        <h3 style={{ fontSize: "22px", fontWeight: 800, color: "#ffffff", margin: "0 0 10px 0", fontFamily: "var(--font-headings)" }}>
-                          Official Placement Interview
-                        </h3>
-                        <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: "0 0 20px 0", lineHeight: 1.5 }}>
-                          Enter the official campus placement assessment for candidate hiring under {selectedCompanyData.name}. Verified by Layer 9 PDP CGPA eligibility check and proctored ZTA security matrix.
-                        </p>
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12.5px", color: "#cbd5e1", background: "rgba(255,255,255,0.02)", padding: "16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.04)" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <span style={{ color: "#10b981", fontWeight: 800 }}>🛑 ZTA-L9 PDP</span> Central Cutoff Audit: CGPA &gt;= {selectedCompanyData.cutoff}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <span style={{ color: "#10b981", fontWeight: 800 }}>🛡️ ZTA-L7/8</span> SOAR Firewall & Threat Shield: XSS / SQLi filtering
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <span style={{ color: "#10b981", fontWeight: 800 }}>📷 ZTA Proctored</span> Biometric Presence & Signed Audit Scorecard
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        <button
-                          className="glow-btn"
-                          style={{
-                            width: "100%",
-                            padding: "14px",
-                            fontSize: "14px",
-                            fontWeight: 700,
-                            background: "linear-gradient(135deg, #10b981, #059669)",
-                            color: "#ffffff",
-                            borderRadius: "12px",
-                            cursor: "pointer",
-                            transition: "all 0.2s"
-                          }}
-                          onClick={() => {
-                            setInterviewType("actual");
-                            sessionStorage.setItem("interviewType", "actual");
-                            setSelectedInterviewMode("actual");
-                          }}
-                        >
-                          Start Official Placement Interview →
-                        </button>
-                        <button
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#10b981",
-                            fontSize: "11px",
-                            cursor: "pointer",
-                            textAlign: "center",
-                            fontFamily: "var(--font-headings)"
-                          }}
-                          onClick={() => setIsZtaDrawerOpen(true)}
-                        >
-                          🛡️ Inspect ZTA Security Matrix for Official Drive
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
-
-                {/* Company Details Tabs Section */}
-                <div className="glass-card" style={{ ...styles.card, padding: "28px", marginTop: "8px" }}>
-                  <div style={{ display: "flex", gap: "10px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "12px", marginBottom: "20px" }}>
-                    <button
-                      onClick={() => setActiveWorkspaceTab("pyqs")}
-                      style={{
-                        background: activeWorkspaceTab === "pyqs" ? "rgba(99, 102, 241, 0.15)" : "none",
-                        border: activeWorkspaceTab === "pyqs" ? "1px solid var(--color-primary)" : "1px solid transparent",
-                        color: activeWorkspaceTab === "pyqs" ? "#ffffff" : "var(--text-muted)",
-                        padding: "6px 14px",
-                        borderRadius: "15px",
-                        fontSize: "12.5px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        fontFamily: "var(--font-headings)",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      📚 Previous Year Questions (PYQs)
-                    </button>
-                    <button
-                      onClick={() => setActiveWorkspaceTab("requirements")}
-                      style={{
-                        background: activeWorkspaceTab === "requirements" ? "rgba(99, 102, 241, 0.15)" : "none",
-                        border: activeWorkspaceTab === "requirements" ? "1px solid var(--color-primary)" : "1px solid transparent",
-                        color: activeWorkspaceTab === "requirements" ? "#ffffff" : "var(--text-muted)",
-                        padding: "6px 14px",
-                        borderRadius: "15px",
-                        fontSize: "12.5px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        fontFamily: "var(--font-headings)",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      🏢 Company Requirements
-                    </button>
-                    <button
-                      onClick={() => setActiveWorkspaceTab("sandbox")}
-                      style={{
-                        background: activeWorkspaceTab === "sandbox" ? "rgba(99, 102, 241, 0.15)" : "none",
-                        border: activeWorkspaceTab === "sandbox" ? "1px solid var(--color-primary)" : "1px solid transparent",
-                        color: activeWorkspaceTab === "sandbox" ? "#ffffff" : "var(--text-muted)",
-                        padding: "6px 14px",
-                        borderRadius: "15px",
-                        fontSize: "12.5px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        fontFamily: "var(--font-headings)",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      🛡️ ZTA Security Guidelines
-                    </button>
-                  </div>
-
-                  {activeWorkspaceTab === "pyqs" && (
-                    <div className="fade-in-up">
-                      <h4 style={{ color: "#ffffff", fontSize: "15px", fontWeight: 800, margin: "0 0 12px 0", fontFamily: "var(--font-headings)" }}>
-                        📚 {selectedCompanyData.name} Past Placement Papers (ZTA Verification Signed)
-                      </h4>
-                      <p style={{ color: "var(--text-muted)", fontSize: "12.5px", margin: "0 0 16px 0", lineHeight: 1.4 }}>
-                        The following questions have been compiled from previous campus recruitment drives at RVCE for the target role: <strong>{selectedCompanyData.role}</strong>.
-                      </p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                        {(MOCK_PYQS_MAP[selectedCompanyData.name.split(" ")[0].toLowerCase()] || [
-                          "Explain key system design components of a scaled distributed web service.",
-                          "Write a recursive function to check if a binary search tree is height-balanced.",
-                          "Describe transaction isolation levels and concurrency controls in modern databases."
-                        ]).map((q, idx) => (
-                          <div key={idx} style={{
-                            background: "rgba(255,255,255,0.02)",
-                            border: "1px solid rgba(255,255,255,0.05)",
-                            padding: "12px 16px",
-                            borderRadius: "10px",
-                            fontSize: "13px",
-                            lineHeight: 1.5,
-                            color: "#cbd5e1"
-                          }}>
-                            <span style={{ color: "var(--color-primary)", fontWeight: 800, marginRight: "8px" }}>Q{idx + 1}:</span>
-                            {q}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeWorkspaceTab === "requirements" && (
-                    <div className="fade-in-up" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                      <div>
-                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-                          Hiring Company
-                        </strong>
-                        <span style={{ fontSize: "14px", color: "#ffffff", fontWeight: 700 }}>
-                          {selectedCompanyData.name} ({selectedCompanyData.domain})
-                        </span>
-                      </div>
-
-                      <div>
-                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-                          Target Placement Role
-                        </strong>
-                        <span style={{ fontSize: "14px", color: "#a5b4fc", fontWeight: 700 }}>{selectedCompanyData.role}</span>
-                      </div>
-
-                      <div>
-                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-                          Job Description
-                        </strong>
-                        <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
-                          {selectedCompanyData.description}
-                        </p>
-                      </div>
-
-                      <div>
-                        <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
-                          Required Technical Stack
-                        </strong>
-                        <span style={{ fontSize: "13.5px", color: "#38bdf8", fontWeight: 700 }}>
-                          {selectedCompanyData.skills}
-                        </span>
-                      </div>
-
-                      <div style={{ display: "flex", gap: "20px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "14px" }}>
-                        <div style={{ flex: 1 }}>
-                          <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>
-                            Min eligibility cutoff
-                          </strong>
-                          <span style={{ fontSize: "14px", color: "#10b981", fontWeight: 800 }}>
-                            CGPA &gt;= {selectedCompanyData.cutoff}
-                          </span>
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <strong style={{ display: "block", fontSize: "11px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "2px" }}>
-                            Placement Paper Active
-                          </strong>
-                          <span style={{ fontSize: "13px", color: "#a5b4fc", fontWeight: 700 }}>
-                            {selectedCompanyData.pyq}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeWorkspaceTab === "sandbox" && (
-                    <div className="fade-in-up" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                      <h4 style={{ color: "#ffffff", fontSize: "15px", fontWeight: 800, margin: "0 0 4px 0", fontFamily: "var(--font-headings)" }}>
-                        🛡️ Zero Trust Architecture (ZTA) 13-Layer Compliance
-                      </h4>
-                      <p style={{ color: "var(--text-muted)", fontSize: "12.5px", margin: 0, lineHeight: 1.5 }}>
-                        This assessment environment is fully bound by our 13-layer Zero Trust Architecture to guarantee non-repudiation, identity verification, and anti-cheat compliance.
-                      </p>
-                      <ul style={{ color: "#cbd5e1", fontSize: "12.5px", margin: "8px 0", paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                        <li><strong>ZTA-L1/2 Infrastructure</strong>: Cryptographic session token verification & automated headless browser scanner.</li>
-                        <li><strong>ZTA-L4/5 Workload & Document</strong>: 10MB payload memory buffer cap & zero-retention 100ms resume parse/delete.</li>
-                        <li><strong>ZTA-L9 Access PDP</strong>: Placement Policy Decision Point cutoffs enforcing minimum academic criteria.</li>
-                        <li><strong>ZTA-L12/13 Compliance & AI</strong>: Demographic fairness shield (scrambled identity) and CV factuality grounding evaluation.</li>
-                      </ul>
-                      <div style={{
-                        background: "rgba(16, 185, 129, 0.05)",
-                        border: "1px solid rgba(16, 185, 129, 0.2)",
-                        padding: "10px 14px",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                        color: "#10b981",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        fontWeight: 700
-                      }}>
-                        <span>✓</span> ZTA Security Status: ALL 13 LAYERS ACTIVE & READY. Select an assessment mode above to proceed.
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            ) : (
-              /* ----------------------------------------------------
-                 NEXT PAGE: DEDICATED SETUP & RESUME UPLOAD PAGE FOR MOCK / ACTUAL
-                 ---------------------------------------------------- */
-              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                
-                {/* Back to Overview Header */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
-                  <button
-                    onClick={() => setSelectedInterviewMode(null)}
-                    style={{
-                      background: "rgba(255, 255, 255, 0.03)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: "20px",
-                      color: "#cbd5e1",
-                      fontSize: "12.5px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      padding: "8px 20px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      fontFamily: "var(--font-headings)",
-                      transition: "all 0.2s"
-                    }}
-                    className="glow-btn"
-                  >
-                    ← Back to {selectedCompanyData.name} Overview
-                  </button>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "11px", color: "#10b981", background: "rgba(16, 185, 129, 0.1)", padding: "4px 10px", borderRadius: "14px", border: "1px solid rgba(16, 185, 129, 0.2)", fontWeight: 700 }}>
-                      🛡️ ZTA TOKEN BOUND
-                    </span>
-                    <div style={{
-                      background: selectedInterviewMode === "actual" ? "rgba(16, 185, 129, 0.1)" : "rgba(99, 102, 241, 0.1)",
-                      border: selectedInterviewMode === "actual" ? "1px solid #10b981" : "1px solid var(--color-primary)",
-                      color: selectedInterviewMode === "actual" ? "#10b981" : "#a5b4fc",
-                      padding: "6px 16px",
-                      borderRadius: "20px",
-                      fontSize: "12px",
-                      fontWeight: 800,
-                      fontFamily: "var(--font-headings)"
-                    }}>
-                      {selectedInterviewMode === "actual" ? "🎓 PAGE: OFFICIAL GRADED ASSESSMENT SETUP" : "🧪 PAGE: PRACTICE MOCK INTERVIEW SETUP"}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "32px", alignItems: "start" }}>
-                  
-                  {/* Left Column: Candidate Details & Resume Upload Form */}
-                  <div className="glass-card" style={{ ...styles.card, padding: "28px" }}>
-                    
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-                      <span style={{
-                        fontSize: "12px",
-                        fontWeight: 800,
-                        padding: "4px 10px",
-                        borderRadius: "8px",
-                        background: selectedInterviewMode === "actual" ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                        color: selectedInterviewMode === "actual" ? "#10b981" : "#a5b4fc",
-                        border: selectedInterviewMode === "actual" ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(99, 102, 241, 0.3)"
-                      }}>
-                        {selectedInterviewMode === "actual" ? "OFFICIAL DRIVE" : "PRACTICE SANDBOX"}
-                      </span>
-                      <span style={{ color: "var(--text-muted)", fontSize: "12px" }}>Targeting: {selectedCompanyData.name}</span>
-                    </div>
-
-                    <h2 style={{ ...styles.title, fontSize: "22px", marginBottom: "8px" }}>
-                      {selectedInterviewMode === "actual" ? "Official Graded Placement Setup" : "Practice Mock Assessment Setup"}
-                    </h2>
-                    <p style={{ ...styles.sub, fontSize: "12.5px", marginBottom: "20px" }}>
-                      {selectedInterviewMode === "actual"
-                        ? `Entering official campus placement evaluation sandbox under ${selectedCompanyData.name} recruitment drive.`
-                        : `Entering practice assessment sandbox under ${selectedCompanyData.name} placement criteria.`}
-                    </p>
-
-                    {/* Field: Full Name */}
-                    <div style={styles.field}>
-                      <label style={styles.label}>
-                        Your Full Name
-                        <span className="badge badge-warning" style={{ fontSize: 9, padding: "2px 6px" }}>🔒 ZTA-L12 Bias Checked</span>
-                      </label>
-                      <input
-                        className="form-input"
-                        type="text"
-                        placeholder="e.g. Sneha Sharma"
-                        value={candidateName}
-                        maxLength={100}
-                        onChange={e => setCandidateName(sanitize(e.target.value))}
-                        disabled={busy}
-                      />
-                      <small style={styles.hint}>
-                        🔒 Scrambled under ZTA Layer 12. Evaluation models analyze only your content, never your name or identity.
-                      </small>
-                    </div>
-
-                    {/* Field: Job Role */}
-                    <div style={styles.field}>
-                      <label style={styles.label}>Target Job Role</label>
-                      <input
-                        className="form-input"
-                        type="text"
-                        placeholder="e.g. Senior Frontend Engineer"
-                        value={jobRole}
-                        maxLength={100}
-                        onChange={e => setJobRole(sanitize(e.target.value))}
-                        disabled={busy}
-                      />
-                    </div>
-
-                    {/* File Drop Zone */}
-                    <div
-                      style={{
-                        ...styles.dropZone,
-                        borderColor: drag ? "var(--color-primary)" : file ? "var(--color-success)" : "rgba(255, 255, 255, 0.15)",
-                        background:  drag ? "rgba(139, 92, 246, 0.05)" : file ? "rgba(16, 185, 129, 0.05)" : "rgba(255, 255, 255, 0.01)",
-                        boxShadow:   drag ? "var(--shadow-glow)" : file ? "var(--shadow-success-glow)" : "none",
-                      }}
-                      onClick={() => !busy && inputRef.current.click()}
-                      onDragOver={e => { e.preventDefault(); setDrag(true); }}
-                      onDragLeave={() => setDrag(false)}
-                      onDrop={onDrop}
-                    >
-                      <input
-                        ref={inputRef}
-                        type="file"
-                        accept=".pdf,application/pdf"
-                        style={{ display: "none" }}
-                        onChange={e => handleFile(e.target.files[0])}
-                      />
-                      {file ? (
-                        <div style={styles.fileReady}>
-                          <span style={{ fontSize: 32 }}>📄</span>
-                          <div style={{ textAlign: "left", flex: 1 }}>
-                            <div style={styles.fileName}>{file.name}</div>
-                            <div style={styles.fileMeta}>{(file.size / 1024).toFixed(0)} KB · PDF Format Verified (ZTA-L5 Scrambled)</div>
-                          </div>
-                          <button
-                            style={styles.clearBtn}
-                            onClick={e => { e.stopPropagation(); setFile(null); }}
-                          >✕ Remove</button>
-                        </div>
-                      ) : (
-                        <div style={styles.dropPrompt}>
-                          <span style={{ fontSize: 28, color: "var(--text-muted)" }}>⬆️</span>
-                          <p style={{ margin: "10px 0 4px", fontWeight: 600, color: "var(--text-main)", fontSize: 14 }}>
-                            Drop your PDF resume here or <span style={{ color: "var(--color-primary)", textDecoration: "underline", cursor: "pointer" }}>browse files</span>
-                          </p>
-                          <small style={{ color: "var(--text-muted)", fontSize: 11 }}>Only PDF allowed · ZTA-L4 10MB Payload Buffer Protection</small>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Interactive L9 PDP Eligibility check console */}
-                    {eligibilityCheck && (
-                      <div style={{
-                        background: "rgba(11, 15, 25, 0.8)",
-                        border: `1px solid ${eligibilityCheck === "passed" ? "rgba(16, 185, 129, 0.3)" : eligibilityCheck === "failed" ? "rgba(239, 68, 68, 0.3)" : "rgba(255, 255, 255, 0.1)"}`,
-                        borderRadius: "8px",
-                        padding: "14px",
-                        marginBottom: "20px",
-                        fontFamily: "monospace",
-                        fontSize: "11px"
-                      }}>
-                        <div style={{ color: eligibilityCheck === "passed" ? "#10b981" : eligibilityCheck === "failed" ? "#ef4444" : "#a5b4fc", fontWeight: 700, marginBottom: "8px" }}>
-                          {eligibilityCheck === "checking" && "⏳ ZTA-L9 PDP CUTOFF CHECKING:"}
-                          {eligibilityCheck === "passed" && "✅ ZTA-L9 PDP RECRUITMENT AUDIT PASSED:"}
-                          {eligibilityCheck === "failed" && "🛑 ZTA-L9 PDP RECRUITMENT AUDIT FAILED:"}
-                        </div>
-                        {eligibilityLogs.map((log, index) => (
-                          <div key={index} style={{ color: "#94a3b8", margin: "3px 0" }}>{log}</div>
-                        ))}
-                      </div>
-                    )}
-
-                    {error && (
-                      <div style={styles.errorBox} className="badge-error">
-                        <span>⚠️</span> {error}
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <button
-                      className="glow-btn"
-                      style={{
-                        width: "100%",
-                        marginTop: 8,
-                        padding: "14px",
-                        fontSize: 15,
-                        background: (busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed") 
-                          ? "rgba(255, 255, 255, 0.05)" 
-                          : (selectedInterviewMode === "actual" 
-                              ? "linear-gradient(135deg, #10b981, #059669)" 
-                              : "linear-gradient(135deg, var(--color-primary), #6366f1)")
-                      }}
-                      onClick={handleSubmit}
-                      disabled={busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed"}
-                    >
-                      {status === "connecting"  && "Establishing ZTA secure session token…"}
-                      {status === "uploading"   && "Uploading & parsing resume (ZTA-L5)…"}
-                      {status === "checking_eligibility" && "Executing ZTA-L9 PDP Cutoff Check…"}
-                      {status === "generating"  && "AI generating questions (ZTA-L13)…"}
-                      {status === "idle"        && (selectedInterviewMode === "actual" ? "Start Official Placement Interview →" : "Start Practice Mock Interview →")}
-                      {status === "done"        && "ZTA Session Ready! Redirecting…"}</button>
-
-                    {/* Progress indicators when busy */}
-                    {busy && (
-                      <div style={styles.progressWrap}>
-                        {[
-                          { key: "connecting",  label: "1. ZTA-L1 Handshaking session token & fingerprint" },
-                          { key: "uploading",   label: "2. ZTA-L5 Extracting text blocks (Zero retention)" },
-                          { key: "checking_eligibility", label: "3. ZTA-L9 PDP Policy Decision Cutoff check" },
-                          { key: "generating",  label: "4. ZTA-L13 AI PYQ-aligned question generation" },
-                        ].map(step => {
-                          const isActive = status === step.key;
-                          return (
-                            <div key={step.key} style={{
-                              ...styles.progressStep,
-                              color: isActive ? "var(--color-primary)" : "var(--text-muted)",
-                              fontWeight: isActive ? 600 : 400,
-                            }}>
-                              {isActive ? (
-                                <span style={styles.miniSpinner} />
-                              ) : (
-                                <span style={{ fontSize: 10, marginRight: 8 }}>○</span>
-                              )}
-                              {step.label}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right Column: ZTA Mode Overview & Live Security Matrix Widget */}
-                  <div className="glass-card" style={{ ...styles.card, padding: "28px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
-                      <h3 style={{ color: "#ffffff", fontSize: "16px", fontWeight: 800, margin: 0, fontFamily: "var(--font-headings)" }}>
-                        🛡️ ZTA Session & Compliance Audit
+                      <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#ffffff", marginBottom: "8px", fontFamily: "var(--font-headings)" }}>
+                        Option 1: Practice Mock Interview
                       </h3>
+                      <p style={{ color: "#6b6b90", fontSize: "13px", lineHeight: 1.6, marginBottom: "20px" }}>
+                        Take a low-stakes mock interview designed specifically for Google's engineering standard. 
+                        Assess your knowledge with instant performance grades. This session does NOT count toward college placements logs.
+                      </p>
                       <button
-                        style={{
-                          background: "rgba(99, 102, 241, 0.15)",
-                          border: "1px solid rgba(99, 102, 241, 0.3)",
-                          color: "#a5b4fc",
-                          borderRadius: "12px",
-                          padding: "4px 10px",
-                          fontSize: "10.5px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          fontFamily: "var(--font-headings)"
-                        }}
-                        onClick={() => setIsZtaDrawerOpen(true)}
+                        onClick={() => { setSelectedInterviewMode("mock"); setInterviewType("mock"); sessionStorage.setItem("interviewType", "mock"); }}
+                        className="ghost-btn"
+                        style={{ width: "100%", padding: "12px", fontSize: "13.5px" }}
                       >
-                        Inspect Drawer ↗
+                        Enter Practice Sandbox →
                       </button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                      <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)" }}>
-                        <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>Active Mode</div>
-                        <div style={{ fontSize: "14px", fontWeight: 800, color: selectedInterviewMode === "actual" ? "#10b981" : "#a5b4fc" }}>
-                          {selectedInterviewMode === "actual" ? "🎓 Official Graded Assessment" : "🧪 Practice Mock Sandbox"}
-                        </div>
+                    {/* Official Drive */}
+                    <div className="glass-card" style={{ padding: "28px", background: "rgba(16, 185, 129, 0.03)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "20px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                        <span className="badge badge-success">🏆 OFFICIAL DRIVE</span>
+                        <span style={{ fontSize: "12px", color: "#34d399", fontWeight: 700 }}>1 Graded Attempt</span>
                       </div>
-
-                      {/* ZTA Live 13-Layer Security Status Grid */}
-                      <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: "14px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.08)" }}>
-                        <div style={{ fontSize: "11px", color: "var(--color-primary)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px", fontFamily: "var(--font-headings)" }}>
-                          ⚡ ZTA LIVE 13-LAYER MATRIX MONITORING
-                        </div>
-
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "11.5px" }}>
-                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
-                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L1 Session:</span> Token Signed
-                          </div>
-                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
-                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L2 Sandbox:</span> Bot Safe
-                          </div>
-                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
-                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L5 Parsing:</span> 100ms Purge
-                          </div>
-                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
-                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L9 PDP:</span> CGPA Audit
-                          </div>
-                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
-                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L12 Bias:</span> Identity Shield
-                          </div>
-                          <div style={{ background: "rgba(255,255,255,0.02)", padding: "6px 8px", borderRadius: "6px", color: "#cbd5e1" }}>
-                            <span style={{ color: "#10b981", fontWeight: 700 }}>✓ L13 AI:</span> Fact Grounded
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)" }}>
-                        <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>Company & Placement Cutoff</div>
-                        <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#ffffff" }}>
-                          {selectedCompanyData.name} — Min CGPA &gt;= {selectedCompanyData.cutoff}
-                        </div>
-                      </div>
-
-                      <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)" }}>
-                        <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>LLM Evaluation Engine</div>
-                        <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#38bdf8" }}>
-                          {selectedLLM.toUpperCase()} (ZTA-L12 Zero-Bias Enabled)
-                        </div>
-                      </div>
-
-                      <div style={{ background: "rgba(16, 185, 129, 0.05)", border: "1px solid rgba(16, 185, 129, 0.2)", padding: "12px", borderRadius: "10px", fontSize: "12px", color: "#cbd5e1" }}>
-                        🔒 <strong>Zero Trust Policy:</strong> Biometric facial tracking & audio anti-cheat algorithms active. Ensure your camera and mic are working before proceeding.
-                      </div>
+                      <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#ffffff", marginBottom: "8px", fontFamily: "var(--font-headings)" }}>
+                        Option 2: Graded Placement Drive
+                      </h3>
+                      <p style={{ color: "#6b6b90", fontSize: "13px", lineHeight: 1.6, marginBottom: "20px" }}>
+                        Conduct the official placement round. Answers are rigorously evaluated by LLM. 
+                        Grade reports are verified and forwarded to the RVCE Placement dashboard for recruitment cataloging.
+                      </p>
+                      <button
+                        onClick={() => { setSelectedInterviewMode("actual"); setInterviewType("actual"); sessionStorage.setItem("interviewType", "actual"); }}
+                        className="glow-btn"
+                        style={{ width: "100%", padding: "12px", fontSize: "13.5px", background: "linear-gradient(135deg, #10b981, #059669)" }}
+                      >
+                        Launch Graded Placement Round →
+                      </button>
                     </div>
-                  </div>
-
-                </div>
-
-              </div>
-            )}
-
-          </div>
-        )}
-
-      {/* Candidate Profile Modal (GitHub-Inspired Design) */}
-      {isProfileOpen && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(1, 4, 9, 0.8)",
-          backdropFilter: "blur(8px)",
-          zIndex: 1000,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          padding: "20px"
-        }} onClick={() => setIsProfileOpen(false)}>
-          
-          <div style={{
-            background: "#0d1117",
-            border: "1px solid #30363d",
-            borderRadius: "16px",
-            width: "100%",
-            maxWidth: "620px",
-            padding: "0",
-            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.85)",
-            overflow: "hidden",
-            position: "relative",
-            textAlign: "left",
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif"
-          }} onClick={e => e.stopPropagation()}>
-            
-            {/* GitHub Header Top Bar */}
-            <div style={{
-              background: "#161b22",
-              borderBottom: "1px solid #30363d",
-              padding: "16px 24px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <svg height="20" width="20" viewBox="0 0 16 16" fill="#f0f6fc">
-                  <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z" />
-                </svg>
-                <span style={{ color: "#f0f6fc", fontSize: "14px", fontWeight: 600 }}>Candidate Profile Overview</span>
-              </div>
-              <button 
-                onClick={() => setIsProfileOpen(false)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#8b949e",
-                  fontSize: "18px",
-                  cursor: "pointer",
-                  padding: "4px 8px",
-                  borderRadius: "6px",
-                  lineHeight: 1
-                }}
-              >✕</button>
-            </div>
-
-            {/* Profile Main Content Body */}
-            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
-              
-              {/* GitHub User Profile Header Card */}
-              <div style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: "16px",
-                background: "#161b22",
-                border: "1px solid #30363d",
-                padding: "20px",
-                borderRadius: "12px"
-              }}>
-                <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-                  <div style={{
-                    width: "64px",
-                    height: "64px",
-                    borderRadius: "50%",
-                    border: "2px solid #30363d",
-                    background: "linear-gradient(135deg, #6366f1, #3b82f6)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "26px",
-                    color: "#ffffff",
-                    fontWeight: 700,
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
-                  }}>
-                    {(sessionStorage.getItem("candidateName") || "C").charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h2 style={{ color: "#f0f6fc", fontSize: "20px", fontWeight: 700, margin: 0, lineHeight: 1.2 }}>
-                      {sessionStorage.getItem("candidateName") || "Sai triveni b"}
-                    </h2>
-                    <div style={{ color: "#8b949e", fontSize: "13.5px", marginTop: "4px" }}>
-                      @{sessionStorage.getItem("candidateEmail") ? sessionStorage.getItem("candidateEmail").split("@")[0] : "saitriveni23"}
-                    </div>
-                    <div style={{ color: "#8b949e", fontSize: "12px", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>✉️</span> {sessionStorage.getItem("candidateEmail") || "triveni238@gmail.com"}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "#21262d",
-                  border: "1px solid #30363d",
-                  padding: "6px 12px",
-                  borderRadius: "20px",
-                  color: "#c9d1d9",
-                  fontSize: "12px",
-                  fontWeight: 600
-                }}>
-                  <span style={{ color: "#3fb950" }}>●</span> Placement Active
-                </div>
-              </div>
-
-              {/* GitHub Menu Item Grid / Tabs */}
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: "10px"
-              }}>
-                <div style={{
-                  background: "#161b22",
-                  border: "1px solid #30363d",
-                  padding: "10px 14px",
-                  borderRadius: "8px",
-                  color: "#c9d1d9",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px"
-                }}>
-                  <span style={{ color: "#58a6ff" }}>📦</span> Placement Drives
-                </div>
-                <div style={{
-                  background: "#161b22",
-                  border: "1px solid #30363d",
-                  padding: "10px 14px",
-                  borderRadius: "8px",
-                  color: "#c9d1d9",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px"
-                }}>
-                  <span style={{ color: "#d29922" }}>⭐</span> Saved PYQs
-                </div>
-                <div style={{
-                  background: "#161b22",
-                  border: "1px solid #30363d",
-                  padding: "10px 14px",
-                  borderRadius: "8px",
-                  color: "#c9d1d9",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px"
-                }}>
-                  <span style={{ color: "#238636" }}>🛡️</span> ZTA-L12 Shield
-                </div>
-              </div>
-
-              {/* Placement Standing Banner */}
-              <div style={{
-                background: "rgba(57, 211, 83, 0.08)",
-                border: "1px solid rgba(57, 211, 83, 0.25)",
-                padding: "14px 18px",
-                borderRadius: "10px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center"
-              }}>
-                <div>
-                  <div style={{ color: "#3fb950", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    PLACEMENT CELL STANDING
-                  </div>
-                  <div style={{ color: "#f0f6fc", fontSize: "13.5px", fontWeight: 600, marginTop: "2px" }}>
-                    Eligible for Tier-1 Placement Drives
-                  </div>
-                </div>
-                <span style={{
-                  background: "#238636",
-                  color: "#ffffff",
-                  padding: "3px 10px",
-                  borderRadius: "12px",
-                  fontSize: "11px",
-                  fontWeight: 700
-                }}>
-                  CLEARED
-                </span>
-              </div>
-
-              {/* Assessment History Activity Section */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                  <h4 style={{ color: "#f0f6fc", fontSize: "13.5px", fontWeight: 600, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>📝</span> Placement Assessment History
-                  </h4>
-                  <span style={{ fontSize: "11px", color: "#8b949e" }}>{profileHistory.length} Recorded</span>
-                </div>
-
-                {profileHistory.length === 0 ? (
-                  <div style={{
-                    textAlign: "center",
-                    padding: "24px",
-                    background: "#161b22",
-                    border: "1px dashed #30363d",
-                    borderRadius: "10px",
-                    color: "#8b949e",
-                    fontSize: "12.5px"
-                  }}>
-                    No placement assessments completed yet. Start an assessment from the catalog!
                   </div>
                 ) : (
-                  <div style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                    maxHeight: "180px",
-                    overflowY: "auto",
-                    paddingRight: "4px"
-                  }}>
-                    {profileHistory.map((item, idx) => (
-                      <div key={idx} style={{
-                        background: "#161b22",
-                        border: "1px solid #30363d",
-                        borderRadius: "8px",
-                        padding: "12px 14px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center"
-                      }}>
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <strong style={{ color: "#58a6ff", fontSize: "13.5px" }}>{item.companyName}</strong>
-                            <span style={{
-                              background: item.interviewType === "Official Graded" ? "rgba(35, 134, 54, 0.15)" : "rgba(88, 166, 255, 0.15)",
-                              color: item.interviewType === "Official Graded" ? "#3fb950" : "#58a6ff",
-                              border: item.interviewType === "Official Graded" ? "1px solid rgba(63, 185, 80, 0.3)" : "1px solid rgba(88, 166, 255, 0.3)",
-                              fontSize: "10px",
-                              padding: "1px 6px",
-                              borderRadius: "10px",
-                              fontWeight: 600
-                            }}>
-                              {item.interviewType}
-                            </span>
-                          </div>
-                          <div style={{ color: "#8b949e", fontSize: "11px", marginTop: "3px" }}>
-                            {item.jobRole} · {item.date}
-                          </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "32px" }} className="fade-in-up">
+                    <div style={styles.leftCol}>
+                      <div className="glass-card" style={styles.card}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                          <h2 style={styles.title}>
+                            {selectedInterviewMode === "actual" ? "🏆 Graded Placement Drive" : "🧪 Practice Mock Sandbox"}
+                          </h2>
+                          <button
+                            onClick={() => setSelectedInterviewMode(null)}
+                            style={{ background: "none", border: "none", color: "#7c3aed", cursor: "pointer", fontSize: "12px", fontWeight: 700, fontFamily: "var(--font-headings)" }}
+                          >
+                            Change Mode
+                          </button>
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: "14px", fontWeight: 700, color: "#f0f6fc" }}>
-                            {item.score}/10
+                        <p style={styles.sub}>
+                          {selectedInterviewMode === "actual"
+                            ? `Submit your verified credentials to start the official recruitment interview for ${selectedCompanyData.name}.`
+                            : "Upload your resume to calibrate practice mock questions for the selected role."}
+                        </p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                          <div>
+                            <label style={styles.label}>CANDIDATE FULL NAME</label>
+                            <input
+                              className="input-field"
+                              type="text"
+                              placeholder="Enter your full name"
+                              value={candidateName}
+                              onChange={e => setCandidateName(e.target.value)}
+                            />
                           </div>
-                          <div style={{ fontSize: "10.5px", color: item.score >= 7 ? "#3fb950" : "#f85149" }}>
-                            {item.grade}
+                          <div>
+                            <label style={styles.label}>TARGET JOB ROLE</label>
+                            <input
+                              className="input-field"
+                              type="text"
+                              placeholder="Enter job role"
+                              value={jobRole}
+                              onChange={e => setJobRole(e.target.value)}
+                            />
                           </div>
+                          <div>
+                            <label style={styles.label}>
+                              <span>RESUME DOCUMENT (PDF)</span>
+                              <span style={{ fontSize: "11px", color: "var(--color-primary-light)" }}>*Text-based PDF only</span>
+                            </label>
+                            <div
+                              className={`drag-zone ${drag ? "active" : ""}`}
+                              onDragOver={e => { e.preventDefault(); setDrag(true); }}
+                              onDragLeave={() => setDrag(false)}
+                              onDrop={e => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) setFile(f); }}
+                              onClick={() => inputRef.current.click()}
+                            >
+                              <input
+                                type="file"
+                                ref={inputRef}
+                                onChange={e => { const f = e.target.files[0]; if (f) setFile(f); }}
+                                style={{ display: "none" }}
+                                accept=".pdf"
+                              />
+                              {file ? (
+                                <div style={styles.fileReady}>
+                                  <span style={{ fontSize: "32px" }}>📄</span>
+                                  <div style={{ textAlign: "left" }}>
+                                    <div style={styles.fileName}>{file.name}</div>
+                                    <div style={styles.fileMeta}>{(file.size / 1024).toFixed(1)} KB · PDF Document</div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); setFile(null); }}
+                                    style={styles.clearBtn}
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={styles.dropPrompt}>
+                                  <span style={{ fontSize: "32px", marginBottom: "8px" }}>📤</span>
+                                  <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--color-primary-light)" }}>
+                                    Click to upload or drag resume here
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {error && (
+                            <div style={{ borderRadius: "12px", border: "1px solid rgba(239,68,68,0.3)", padding: "12px", background: "rgba(239,68,68,0.08)", color: "#ef4444", fontSize: "13px" }}>
+                              {error}
+                            </div>
+                          )}
+
+                          <button
+                            className="glow-btn"
+                            style={{
+                              width: "100%", marginTop: 8, padding: "14px", fontSize: 15,
+                              background: (busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed") 
+                                ? "rgba(255, 255, 255, 0.05)" 
+                                : (selectedInterviewMode === "actual" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, var(--color-primary), #6366f1)")
+                            }}
+                            onClick={handleSubmit}
+                            disabled={busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed"}
+                          >
+                            {status === "connecting"  && "Establishing ZTA secure session token…"}
+                            {status === "uploading"   && "Uploading & parsing resume…"}
+                            {status === "checking_eligibility" && "Checking minimum CGPA cutoff…"}
+                            {status === "generating"  && "AI generating questions…"}
+                            {status === "idle"        && (selectedInterviewMode === "actual" ? "Start Official Placement Interview →" : "Start Practice Mock Interview →")}
+                            {status === "done"        && "ZTA Session Ready! Redirecting…"}
+                          </button>
+
+                          {busy && (
+                            role === "candidate" ? (
+                              <div style={{ textAlign: "center", padding: "20px", color: "#6b6b90", fontSize: "13px" }}>
+                                <span style={{ display: "inline-block", width: "16px", height: "16px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#7c3aed", animation: "spin 0.8s linear infinite", marginRight: "10px", verticalAlign: "middle" }} />
+                                Authenticating ZTA workload and generating unique questions...
+                              </div>
+                            ) : (
+                              <div style={styles.progressWrap}>
+                                {eligibilityLogs.map((log, index) => (
+                                  <div key={index} style={styles.progressStep}>
+                                    {index === eligibilityLogs.length - 1 && eligibilityCheck !== "passed" ? (
+                                      <span style={styles.miniSpinner} />
+                                    ) : (
+                                      <span style={{ color: "#34d399", marginRight: "8px" }}>✓</span>
+                                    )}
+                                    {log}
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          )}
                         </div>
                       </div>
-                    ))}
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                      <div className="glass-card" style={styles.card}>
+                        <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
+                          🛡️ ZTA Session Guard
+                        </h3>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
+                          {role === "admin" && <div>• Minimum CGPA Cutoff: {selectedCompanyData.cutoff}</div>}
+                          <div>• Live Camera Face Verification Enforced</div>
+                          <div>• L14 Non-repeating unique question seed active</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
-
-              {/* GitHub Footer Action Controls */}
-              <div style={{ display: "flex", gap: "10px", paddingTop: "8px" }}>
-                <button
-                  style={{
-                    flex: 1,
-                    background: "#21262d",
-                    border: "1px solid #30363d",
-                    color: "#f0f6fc",
-                    padding: "10px",
-                    borderRadius: "6px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    transition: "all 0.2s"
-                  }}
-                  onClick={() => setIsProfileOpen(false)}
-                >
-                  Close Overview
-                </button>
-                <button
-                  style={{
-                    background: "rgba(248, 81, 73, 0.1)",
-                    border: "1px solid rgba(248, 81, 73, 0.4)",
-                    color: "#f85149",
-                    padding: "10px 18px",
-                    borderRadius: "6px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px"
-                  }}
-                  onClick={() => {
-                    sessionStorage.clear();
-                    window.location.reload();
-                  }}
-                >
-                  <span>🚪</span> Sign out
-                </button>
+            )
+          ) : currentSidebarTab === "prep" ? (
+            <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
+                {[
+                  { title: "💻 Data Structures & Algorithms", items: ["Array & Hashing challenges", "Tree & Graph structures", "Dynamic Programming cheat sheets"], progress: 65, color: "#7c3aed" },
+                  { title: "🌐 System Design & Scalability", items: ["Load balancing & Caching", "Database partitioning", "Microservices architecture"], progress: 40, color: "#06b6d4" },
+                  { title: "🤖 AI / Machine Learning Fundamentals", items: ["Neural network training dynamics", "Transformer architectures & LLMs", "Evaluation metrics & Bias control"], progress: 80, color: "#10b981" },
+                  { title: "🗣️ Behavioral & HR Interview Prep", items: ["STAR method answer builder", "College project summaries", "Leadership situations"], progress: 90, color: "#f59e0b" },
+                ].map((topic, i) => (
+                  <div key={i} style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px" }}>
+                    <h4 style={{ color: "#f0f0ff", marginBottom: "12px", fontSize: "15px" }}>{topic.title}</h4>
+                    <ul style={{ paddingLeft: "18px", margin: "0 0 16px 0", color: "#6b6b90", fontSize: "12.5px" }}>
+                      {topic.items.map((item, j) => <li key={j} style={{ marginBottom: "6px" }}>{item}</li>)}
+                    </ul>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#4a4a6a", marginBottom: "4px" }}>
+                      <span>TOPIC PROGRESS</span>
+                      <span style={{ color: topic.color }}>{topic.progress}% Completed</span>
+                    </div>
+                    <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px" }}>
+                      <div style={{ width: `${topic.progress}%`, height: "100%", background: topic.color, borderRadius: "2px" }} />
+                    </div>
+                  </div>
+                ))}
               </div>
-
             </div>
-          </div>
-        </div>
-      )}
+          ) : currentSidebarTab === "mock" ? (
+            <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "28px" }}>
+                <div style={{ padding: "24px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px" }}>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "16px" }}>Initialize New Practice Session</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    <div>
+                      <label style={styles.label}>TARGET JOB ROLE</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="e.g. Machine Learning Engineer"
+                        value={jobRole}
+                        onChange={e => setJobRole(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={styles.label}>UPLOAD RESUME FOR RELEVANCE SCAN</label>
+                      <div
+                        className={`drag-zone ${drag ? "active" : ""}`}
+                        onDragOver={e => { e.preventDefault(); setDrag(true); }}
+                        onDragLeave={() => setDrag(false)}
+                        onDrop={e => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) setFile(f); }}
+                        onClick={() => inputRef.current.click()}
+                        style={{ padding: "20px" }}
+                      >
+                        <input type="file" ref={inputRef} onChange={e => { const f = e.target.files[0]; if (f) setFile(f); }} style={{ display: "none" }} accept=".pdf" />
+                        {file ? (
+                          <div style={styles.fileReady}>
+                            <span style={{ fontSize: "24px" }}>📄</span>
+                            <div style={{ textAlign: "left" }}>
+                              <div style={styles.fileName}>{file.name}</div>
+                              <div style={styles.fileMeta}>{(file.size / 1024).toFixed(1)} KB · Ready to scan</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={styles.dropPrompt}>
+                            <span style={{ fontSize: "24px", marginBottom: "6px" }}>📤</span>
+                            <span style={{ fontSize: "13px", fontWeight: 700, color: "#c4b5fd" }}>Click or Drag PDF Resume here</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      className="glow-btn"
+                      onClick={handleSubmit}
+                      style={{ padding: "14px", fontSize: "14px" }}
+                    >
+                      Start Practice Mock Interview
+                    </button>
+                  </div>
+                </div>
 
-      {/* Collapsible ZTA Security Matrix Audit Drawer */}
-        {isZtaDrawerOpen && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            right: 0,
-            width: "480px",
-            maxWidth: "95%",
-            height: "100vh",
-            background: "rgba(15, 23, 42, 0.98)",
-            boxShadow: "-10px 0 40px rgba(0,0,0,0.8)",
-            borderLeft: "1px solid rgba(255,255,255,0.1)",
-            zIndex: 9999,
-            padding: "24px",
-            overflowY: "auto",
-            backdropFilter: "blur(20px)",
-            fontFamily: "var(--font-body)"
-          }} className="fade-in-right">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "20px" }}>🛡️</span>
-                <span style={{ fontSize: "15px", fontWeight: 800, color: "#fff", fontFamily: "var(--font-headings)" }}>
-                  ZTA SECURITY AUDIT MATRIX
-                </span>
+                <div style={{ padding: "20px", background: "rgba(124,58,237,0.04)", border: "1px solid rgba(139,92,246,0.15)", borderRadius: "14px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                  <div>
+                    <h4 style={{ color: "#c4b5fd", marginBottom: "8px" }}>Why take practice mocks?</h4>
+                    <p style={{ color: "#6b6b90", fontSize: "12.5px", lineHeight: 1.6 }}>
+                      Practice mocks let you verify if your resume matches candidate credentials without affecting college drive placement scores. ZTA logs are generated but not reported to the placement coordinator dashboard.
+                    </p>
+                  </div>
+                </div>
               </div>
-              <button 
-                onClick={() => setIsZtaDrawerOpen(false)} 
-                style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "20px" }}
-              >✕</button>
             </div>
-            <ZTAStatusDashboard />
-          </div>
-        )}
+          ) : currentSidebarTab === "calendar" ? (
+            <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px", background: "rgba(255,255,255,0.01)", padding: "12px", borderRadius: "14px", border: "1px solid rgba(255,255,255,0.03)" }}>
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
+                  <div key={day} style={{ textAlign: "center", fontSize: "11.5px", fontWeight: 800, color: "#4a4a6a", padding: "6px 0" }}>{day}</div>
+                ))}
+                {Array.from({ length: 35 }).map((_, idx) => {
+                  const dayNum = idx - 2;
+                  const isValid = dayNum > 0 && dayNum <= 31;
+                  const events = {
+                    5:  { label: "Google Drive Open", color: "#7c3aed" },
+                    12: { label: "Microsoft Code Test", color: "#06b6d4" },
+                    18: { label: "NVIDIA Cutoff checks", color: "#10b981" },
+                    25: { label: "Mock Interviews Walk", color: "#f59e0b" },
+                  }[dayNum];
 
-        {/* Placement Campaign Portal Footer */}
-        <footer style={{
-          marginTop: "48px",
-          borderTop: "1px solid rgba(255, 255, 255, 0.06)",
-          paddingTop: "20px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "16px"
-        }}>
-          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-            © 2026 RVCE Bangalore Campus Placement Cell. Zero Trust Sandbox enabled.
-          </div>
-          <div style={{ display: "flex", gap: "20px", fontSize: "12.5px" }}>
-            <span style={{ color: recruiterCompany ? "#10b981" : "var(--text-muted)" }}>
-              🔒 <strong>Eligible Cutoff:</strong> {recruiterCompany ? `CGPA >= ${minCgpa}` : "Not Active"}
-            </span>
-            <span style={{ color: recruiterCompany ? "#38bdf8" : "var(--text-muted)" }}>
-              📚 <strong>PYQs active:</strong> {recruiterCompany ? selectedPYQ : "None"}
-            </span>
-            <span style={{ color: "var(--text-muted)" }}>
-              🛠️ <strong>LLM:</strong> {selectedLLM.toUpperCase()}
-            </span>
-          </div>
-        </footer>
-      </main>
+                  return (
+                    <div key={idx} style={{
+                      minHeight: "75px",
+                      background: isValid ? "rgba(255,255,255,0.02)" : "transparent",
+                      border: isValid ? "1px solid rgba(255,255,255,0.04)" : "none",
+                      borderRadius: "8px",
+                      padding: "6px",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between"
+                    }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: isValid ? "#6b6b90" : "transparent" }}>{isValid ? dayNum : ""}</span>
+                      {events && (
+                        <span style={{
+                          fontSize: "9px", fontWeight: 800, color: events.color, background: `${events.color}15`,
+                          border: `1px solid ${events.color}30`, padding: "2px 4px", borderRadius: "4px",
+                          textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
+                        }}>{events.label}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : currentSidebarTab === "account" ? (
+            <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "28px" }}>
+                <div style={{ padding: "24px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", textAlign: "center" }}>
+                  <div style={{
+                    width: "72px", height: "72px", borderRadius: "50%",
+                    background: "linear-gradient(135deg, #7c3aed, #6366f1)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "28px", fontWeight: 900, color: "#fff",
+                    margin: "0 auto 16px",
+                    boxShadow: "0 8px 24px rgba(124,58,237,0.3)"
+                  }}>
+                    {(candidateName || "C").charAt(0).toUpperCase()}
+                  </div>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px" }}>{candidateName}</h4>
+                  <div style={{ fontSize: "12px", color: "#6b6b90", marginBottom: "16px" }}>{role === "admin" ? "Recruiter ID" : "Candidate ID"}: {sessionStorage.getItem("ztaFingerprint")?.slice(0,8).toUpperCase() || "N/A"}</div>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <span className="zta-badge" style={{ fontSize: "10px" }}><span className="pulse-dot" /> ZTA VERIFIED</span>
+                  </div>
+                </div>
+
+                <div style={{ padding: "24px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px" }}>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "16px" }}>{role === "admin" ? "Recruiter Campaigns Matrix" : "Assessment History"}</h4>
+                  {role === "admin" ? (
+                    <div style={{ padding: "20px", color: "#6b6b90", fontSize: "13.5px", lineHeight: 1.6 }}>
+                      🔒 You are actively logged in as a <strong>Recruiter & Coordinator</strong>. You have permissions to configure proctoring limits, toggle agent templates, audit candidate compliance, and reset security blocks.
+                    </div>
+                  ) : profileHistory.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "32px 0", color: "#4a4a6a", fontSize: "13px" }}>
+                      No placement drives attempted yet. Select a company to start.
+                    </div>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse", color: "#cbd5e1" }} className="data-table">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", textAlign: "left" }}>
+                          <th style={{ padding: "10px" }}>Date</th>
+                          <th style={{ padding: "10px" }}>Company</th>
+                          <th style={{ padding: "10px" }}>Role</th>
+                          <th style={{ padding: "10px" }}>Avg Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {profileHistory.map((item, index) => (
+                          <tr key={index} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                            <td style={{ padding: "10px" }}>{item.date}</td>
+                            <td style={{ padding: "10px", fontWeight: 700, color: "#ffffff" }}>{item.companyName}</td>
+                            <td style={{ padding: "10px" }}>{item.jobRole}</td>
+                            <td style={{ padding: "10px", fontWeight: 700, color: "#7c3aed" }}>{item.score} / 10</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : currentSidebarTab === "settings" ? (
+            <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "24px" }}>
+                
+                {/* Preferences */}
+                <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>👤 Candidate Preferences</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Toggle email alerts</span>
+                      <input type="checkbox" defaultChecked />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>ZTA continuous biometric face checks</span>
+                      <input type="checkbox" defaultChecked />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recruiter & AI Personality */}
+                <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>🤖 Recruiter Controls & AI Agents</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <div>
+                      <label style={styles.label}>ACTIVE LLM MODEL CLUSTER</label>
+                      <select
+                        className="input-field"
+                        value={selectedLLM}
+                        onChange={e => setSelectedLLM(e.target.value)}
+                        style={{ fontSize: "12px", padding: "8px 12px" }}
+                      >
+                        <option value="llama-3-edge">Llama-3-Edge (ZTA L13 Fact Checker)</option>
+                        <option value="gemini-flash">Gemini-Flash fallback</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={styles.label}>PLACEMENT CUTOFF CGPA</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        className="input-field"
+                        value={minCgpa}
+                        onChange={e => setMinCgpa(e.target.value)}
+                        style={{ fontSize: "12px", padding: "8px 12px" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={styles.label}>ACTIVE INTERVIEW AGENT PERSONALITY</label>
+                      <select
+                        className="input-field"
+                        value={selectedAgent}
+                        onChange={e => setSelectedAgent(e.target.value)}
+                        style={{ fontSize: "12px", padding: "8px 12px" }}
+                      >
+                        <option value="skyy">Skyy — Conversational AI Interviewer</option>
+                        <option value="zeus">Zeus — Technical Insights Deep Diver</option>
+                        <option value="matt">Matt — High-empathy Feedback Agent</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Yoodli Speaking Insights */}
+                <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>🗣️ Yoodli Delivery Insights</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Track words-per-minute pace</span>
+                      <input type="checkbox" checked={paceTrackerEnabled} onChange={e => setPaceTrackerEnabled(e.target.checked)} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Scan for filler words (um, ah, like)</span>
+                      <input type="checkbox" checked={fillerScannerEnabled} onChange={e => setFillerScannerEnabled(e.target.checked)} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Evaluate grammar & vocabulary density</span>
+                      <input type="checkbox" checked={grammarScanEnabled} onChange={e => setGrammarScanEnabled(e.target.checked)} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Interviewer.ai Screening Weights */}
+                <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>🎯 ATS Screening Weightage</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#6b6b90", fontWeight: 700, marginBottom: "4px" }}>
+                        <span>RESUME MATCH THRESHOLD</span>
+                        <span style={{ color: "#c4b5fd" }}>{keywordMatchThreshold}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="10"
+                        max="100"
+                        value={keywordMatchThreshold}
+                        onChange={e => setKeywordMatchThreshold(e.target.value)}
+                        style={{ width: "100%", accentColor: "#7c3aed" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={styles.label}>TECHNICAL SKILL WEIGHT (%)</label>
+                      <input
+                        type="number"
+                        className="input-field"
+                        value={weightTechnical}
+                        onChange={e => setWeightTechnical(e.target.value)}
+                        style={{ fontSize: "12px", padding: "8px 12px" }}
+                      />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <div>
+                        <label style={styles.label}>EXPERIENCE (%)</label>
+                        <input
+                          type="number"
+                          className="input-field"
+                          value={weightExperience}
+                          onChange={e => setWeightExperience(e.target.value)}
+                          style={{ fontSize: "12px", padding: "8px 12px" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>ACADEMICS (%)</label>
+                        <input
+                          type="number"
+                          className="input-field"
+                          value={weightAcademic}
+                          onChange={e => setWeightAcademic(e.target.value)}
+                          style={{ fontSize: "12px", padding: "8px 12px" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Proctor Security Rules */}
+                <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>🛡️ Proctoring Security Shield</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Enforce active screen sharing call</span>
+                      <input type="checkbox" checked={proctorScreenShareEnforced} onChange={e => setProctorScreenShareEnforced(e.target.checked)} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Detect external AI tools & extensions</span>
+                      <input type="checkbox" checked={proctorAiToolsDetection} onChange={e => setProctorAiToolsDetection(e.target.checked)} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Auto-terminate call on security violation</span>
+                      <input type="checkbox" checked={proctorAutoTerminate} onChange={e => setProctorAutoTerminate(e.target.checked)} />
+                    </div>
+
+                    <div style={{ marginTop: "10px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "14px" }}>
+                      <button
+                        onClick={handleResetIPBlock}
+                        className="ghost-btn"
+                        style={{ width: "100%", padding: "10px", fontSize: "12px" }}
+                      >
+                        Reset Proctor Guard / Unblock IP
+                      </button>
+                      {unblockMessage && (
+                        <div style={{ fontSize: "11px", color: "#34d399", marginTop: "8px", textAlign: "center", fontWeight: 700 }}>
+                          {unblockMessage}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          ) : currentSidebarTab === "help" ? (
+            <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {[
+                  { q: "Why was my resume rejected for the drive?", a: "The ZTA L2/L9 check verifies if the candidate matches the authoritative name in the resume. It also checks if the target job role keywords match your past project experience." },
+                  { q: "What is Zero Trust Placement Architecture (ZTA)?", a: "RVCE Placement Cell utilizes a 13-layer ZTA model to prevent evaluation bias, coordinate candidate credential checks, enforce question uniqueness per session, and ensure fully automated grading via secure LLM orchestration." },
+                  { q: "My CGPA value is wrong in the profile check.", a: "CGPA is parsed from the uploaded resume file text. Ensure your resume has a clearly visible CGPA pointer (e.g. 'CGPA: 8.8')." }
+                ].map((faq, i) => (
+                  <div key={i} style={{ padding: "16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "10px" }}>
+                    <div style={{ fontWeight: 800, color: "#c4b5fd", fontSize: "14px", marginBottom: "6px" }}>Q: {faq.q}</div>
+                    <div style={{ color: "#6b6b90", fontSize: "13px", lineHeight: 1.6 }}>A: {faq.a}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Collapsible ZTA Security Matrix Audit Drawer */}
+          {isZtaDrawerOpen && (
+            <div style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              width: "480px",
+              maxWidth: "95%",
+              height: "100vh",
+              background: "rgba(15, 23, 42, 0.98)",
+              boxShadow: "-10px 0 40px rgba(0,0,0,0.8)",
+              borderLeft: "1px solid rgba(255,255,255,0.1)",
+              zIndex: 9999,
+              padding: "24px",
+              overflowY: "auto",
+              backdropFilter: "blur(20px)",
+              fontFamily: "var(--font-body)"
+            }} className="fade-in-right">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "20px" }}>🛡️</span>
+                  <span style={{ fontSize: "15px", fontWeight: 800, color: "#fff", fontFamily: "var(--font-headings)" }}>
+                    ZTA SECURITY AUDIT MATRIX
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setIsZtaDrawerOpen(false)} 
+                  style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "20px" }}
+                >✕</button>
+              </div>
+              <ZTAStatusDashboard />
+            </div>
+          )}
+
+          {/* Placement Campaign Portal Footer */}
+          <footer style={{
+            marginTop: "48px",
+            borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+            paddingTop: "20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "16px"
+          }}>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+              © 2026 RVCE Bangalore Campus Placement Cell. Zero Trust Sandbox enabled.
+            </div>
+            <div style={{ display: "flex", gap: "20px", fontSize: "12.5px" }}>
+              <span style={{ color: recruiterCompany ? "#10b981" : "var(--text-muted)" }}>
+                🔒 <strong>Eligible Cutoff:</strong> {recruiterCompany ? `CGPA >= ${minCgpa}` : "Not Active"}
+              </span>
+              <span style={{ color: recruiterCompany ? "#38bdf8" : "var(--text-muted)" }}>
+                📚 <strong>PYQs active:</strong> {recruiterCompany ? selectedPYQ : "None"}
+              </span>
+              <span style={{ color: "var(--text-muted)" }}>
+                🛠️ <strong>LLM:</strong> {selectedLLM.toUpperCase()}
+              </span>
+            </div>
+          </footer>
+        </main>
+      </div>
     </div>
   );
 }

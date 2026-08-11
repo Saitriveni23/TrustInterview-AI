@@ -126,4 +126,136 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
   }
 });
 
+// ── ZTA-L2 / L9: Resume Validation — Name & Role Match ──────────────────────
+// POST /api/resume/validate
+// Body: { resumeText, enteredName, jobRole }
+// Returns: { nameMatch, roleMatch, extractedName, nameSimilarity, roleKeywordsFound, errors[] }
+router.post("/validate", (req, res) => {
+  const { resumeText, enteredName, jobRole } = req.body;
+  if (!resumeText || !enteredName || !jobRole) {
+    return res.status(400).json({ error: "resumeText, enteredName, and jobRole are required." });
+  }
+
+  const errors = [];
+  const text   = resumeText;
+
+  // ── 1. EXTRACT NAME FROM RESUME ────────────────────────────────────────────
+  // Strategy: look at first 600 chars (header area), find the biggest "name-looking" line
+  const header = text.substring(0, 600);
+  const lines  = header.split("\n").map(l => l.trim()).filter(l => l.length > 1);
+
+  // Heuristic: first line that looks like a proper name (2-4 words, title-cased, no digits/special chars)
+  const namePattern = /^[A-Z][a-z]+(?: [A-Z][a-z]+){1,3}$/;
+  let extractedName = null;
+
+  for (const line of lines.slice(0, 8)) {
+    if (namePattern.test(line)) {
+      extractedName = line;
+      break;
+    }
+  }
+
+  // Fallback: find "Name: Xxx" pattern
+  if (!extractedName) {
+    const nameTag = text.match(/(?:name\s*[:\-]\s*)([A-Z][a-zA-Z ]{3,40})/i);
+    if (nameTag) extractedName = nameTag[1].trim();
+  }
+
+  // Fallback 2: pick the longest capitalised-word sequence in first 300 chars
+  if (!extractedName) {
+    const caps = header.match(/[A-Z][a-z]+(?: [A-Z][a-z]+)+/g);
+    if (caps && caps.length > 0) {
+      extractedName = caps.sort((a, b) => b.length - a.length)[0];
+    }
+  }
+
+  // ── 2. NAME FUZZY MATCH ─────────────────────────────────────────────────────
+  function normalizeName(n) {
+    return (n || "").toLowerCase().replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
+  }
+  function tokenOverlap(a, b) {
+    const ta = new Set(normalizeName(a).split(" ").filter(w => w.length > 1));
+    const tb = new Set(normalizeName(b).split(" ").filter(w => w.length > 1));
+    let overlap = 0;
+    ta.forEach(w => { if (tb.has(w)) overlap++; });
+    return ta.size === 0 ? 0 : overlap / Math.max(ta.size, tb.size);
+  }
+
+  const nameSimilarity = extractedName ? tokenOverlap(enteredName, extractedName) : 0;
+  const nameMatch      = nameSimilarity >= 0.5; // at least 1 token in common
+
+  if (!nameMatch) {
+    errors.push(
+      extractedName
+        ? `Name mismatch: Resume appears to belong to "${extractedName}", but you entered "${enteredName}". Please upload your own resume or correct your name.`
+        : `Could not find a clear name in the resume. Please ensure you are uploading your own resume.`
+    );
+  }
+
+  // ── 3. ROLE RELEVANCE CHECK ─────────────────────────────────────────────────
+  // Map common roles to keyword sets
+  const ROLE_KEYWORDS = {
+    "ai":              ["machine learning","deep learning","neural network","llm","pytorch","tensorflow","nlp","computer vision","reinforcement learning","transformer","ai","artificial intelligence","model"],
+    "ml":              ["machine learning","sklearn","xgboost","regression","classification","feature engineering","dataset","training","model","gradient"],
+    "data":            ["sql","python","pandas","tableau","powerbi","analytics","data analysis","etl","dashboard","excel","statistics","visualization"],
+    "software":        ["java","c++","python","javascript","react","node","spring","api","backend","frontend","microservices","git","software"],
+    "backend":         ["api","rest","node","express","django","flask","sql","database","server","microservices","aws","docker"],
+    "frontend":        ["react","angular","vue","html","css","javascript","typescript","ui","ux","responsive"],
+    "devops":          ["kubernetes","docker","ci/cd","jenkins","terraform","ansible","linux","aws","gcp","azure","pipeline"],
+    "cloud":           ["aws","azure","gcp","kubernetes","terraform","cloud","s3","ec2","lambda","serverless"],
+    "cybersecurity":   ["security","penetration","vulnerability","firewall","siem","threat","encryption","soc","ctf","malware","zero trust"],
+    "security":        ["security","penetration","vulnerability","firewall","encryption","threat","soc"],
+    "network":         ["networking","tcp","ip","dns","routing","switching","firewall","vpn","protocol"],
+    "database":        ["sql","mysql","postgresql","mongodb","oracle","database","nosql","redis","query"],
+    "embedded":        ["embedded","c","rtos","microcontroller","fpga","arm","firmware","iot","hardware"],
+    "mobile":          ["android","ios","flutter","react native","swift","kotlin","mobile"],
+    "research":        ["research","paper","publication","study","analysis","algorithm","proof","theorem"],
+    "analyst":         ["analysis","reporting","excel","powerbi","tableau","sql","kpi","metrics","data"],
+    "engineer":        ["engineering","design","system","architecture","development","programming","code"],
+    "developer":       ["programming","coding","development","software","git","agile","api","deployment"],
+    "associate":       ["work experience","intern","project","team","collaboration","communication"],
+  };
+
+  const roleLower = jobRole.toLowerCase();
+  let keywordsToCheck = [];
+
+  // Find matching keyword set
+  for (const [key, kws] of Object.entries(ROLE_KEYWORDS)) {
+    if (roleLower.includes(key)) {
+      keywordsToCheck = [...keywordsToCheck, ...kws];
+    }
+  }
+  // Always add generic engineering words
+  keywordsToCheck = [...new Set([...keywordsToCheck, "project","experience","skill","developed","built","intern","work"])];
+
+  const textLower    = text.toLowerCase();
+  const foundKws     = keywordsToCheck.filter(kw => textLower.includes(kw));
+  const roleScore    = keywordsToCheck.length > 0 ? foundKws.length / Math.min(keywordsToCheck.length, 8) : 1;
+  const roleMatch    = roleScore >= 0.3; // at least 30% of keywords found
+
+  if (!roleMatch) {
+    errors.push(
+      `Role mismatch: Your resume does not appear to have relevant skills or experience for "${jobRole}". ` +
+      `Expected keywords like: ${keywordsToCheck.slice(0, 5).join(", ")}. ` +
+      `Please apply for a role that matches your background.`
+    );
+  }
+
+  console.log(`[ZTA-Validate] Name: "${enteredName}" vs Resume: "${extractedName}" → sim=${nameSimilarity.toFixed(2)} match=${nameMatch}`);
+  console.log(`[ZTA-Validate] Role: "${jobRole}" → score=${roleScore.toFixed(2)} match=${roleMatch} found=${foundKws.length}/${keywordsToCheck.length}`);
+
+  return res.json({
+    success: true,
+    nameMatch,
+    roleMatch,
+    extractedName: extractedName || null,
+    nameSimilarity: parseFloat(nameSimilarity.toFixed(2)),
+    roleKeywordsFound: foundKws,
+    roleScore: parseFloat(roleScore.toFixed(2)),
+    errors,
+    blocked: errors.length > 0,
+  });
+});
+
 module.exports = router;
+
