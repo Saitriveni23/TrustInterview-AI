@@ -15,6 +15,9 @@ const ROUTE_POLICIES = {
   "/api/zta-status":       { requireSession: false, allowedMethods: ["GET"] },
   "/api/resume":           { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
   "/api/interview/leaderboard": { requireSession: false, allowedMethods: ["GET"] },
+  "/api/interview/company-settings": { requireSession: false, allowedMethods: ["GET", "POST"] },
+  "/api/interview/tickets/resolve": { requireSession: false, allowedMethods: ["POST"] },
+  "/api/interview/tickets": { requireSession: false, allowedMethods: ["GET", "POST"] },
   "/api/interview":        { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
   "/api/evaluate":         { requireSession: true,  allowedMethods: ["POST"], maxSessionAgeMs: 60 * 60 * 1000 },
 };

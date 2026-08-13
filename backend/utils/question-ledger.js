@@ -90,7 +90,16 @@ function getLeaderboard(filterCompany = "") {
   for (const user of candidates) {
     const key = user.email.toLowerCase().trim();
     const data = ledger[key] || {};
-    const sessions = data.sessions || [];
+    let sessions = data.sessions || [];
+    if (sessions.length === 0 && data.totalSessions > 0) {
+      sessions = [{
+        company: "General",
+        score: data.avgScore || data.bestScore || 0,
+        jobRole: "AI Specialist",
+        date: data.lastSession || new Date().toISOString(),
+        interviewType: "actual"
+      }];
+    }
     
     // Filter sessions by company and only include 'actual' graded interviews (exclude mocks)
     const filteredSessions = sessions.filter(s => {
@@ -100,6 +109,9 @@ function getLeaderboard(filterCompany = "") {
     });
       
     const totalSessions = filteredSessions.length;
+    if (filterCompany && filterCompany.toLowerCase().trim() !== "general" && totalSessions === 0) {
+      continue;
+    }
     const bestScore = totalSessions > 0 ? Math.max(...filteredSessions.map(s => s.score)) : 0;
     const avgScore = totalSessions > 0 ? parseFloat((filteredSessions.reduce((sum, s) => sum + s.score, 0) / totalSessions).toFixed(2)) : 0;
     const lastSession = totalSessions > 0 ? filteredSessions[totalSessions - 1].date : (user.registeredAt || "");
@@ -231,4 +243,48 @@ function setCompanyCgpa(company, minCgpa) {
   saveSettings(settings);
 }
 
-module.exports = { getSeenQuestions, markQuestionsSeen, getLeaderboard, recordScore, getCompanyCgpa, setCompanyCgpa };
+const TICKETS_PATH = path.join(__dirname, "../support-tickets.json");
+
+function loadTickets() {
+  if (!fs.existsSync(TICKETS_PATH)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(TICKETS_PATH, "utf-8"));
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveTickets(tickets) {
+  fs.writeFileSync(TICKETS_PATH, JSON.stringify(tickets, null, 2), "utf-8");
+}
+
+function addTicket(ticket) {
+  const tickets = loadTickets();
+  tickets.unshift(ticket);
+  saveTickets(tickets);
+  return ticket;
+}
+
+function resolveTicket(ticketId) {
+  const tickets = loadTickets();
+  const index = tickets.findIndex(t => t.id === ticketId);
+  if (index !== -1) {
+    tickets[index].status = "Resolved";
+    tickets[index].resolvedAt = new Date().toISOString();
+    saveTickets(tickets);
+    return true;
+  }
+  return false;
+}
+
+module.exports = { 
+  getSeenQuestions, 
+  markQuestionsSeen, 
+  getLeaderboard, 
+  recordScore, 
+  getCompanyCgpa, 
+  setCompanyCgpa,
+  loadTickets,
+  addTicket,
+  resolveTicket
+};

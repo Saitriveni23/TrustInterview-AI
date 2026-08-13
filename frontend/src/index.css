@@ -593,15 +593,158 @@ textarea.input-field { resize: vertical; min-height: 100px; line-height: 1.7; }
 .delay-3 { animation-delay: 0.15s; }
 .delay-4 { animation-delay: 0.2s;  }
 
+/* ── SKELETON SHIMMER ────────────────────────────────────────────── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
 .skeleton {
-  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.04) 75%);
-  background-size: 400px 100%;
-  animation: shimmer 1.4s infinite;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s infinite linear;
   border-radius: 6px;
 }
 
-/* ── RESPONSIVE ──────────────────────────────────────────────────── */
+/* ── COUNTDOWN RING ANIMATION ────────────────────────────────────── */
+@keyframes ring-countdown {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 283; } /* 2π × 45 ≈ 283 */
+}
+
+.ring-critical { stroke: #ef4444 !important; }
+.ring-warning  { stroke: #f59e0b !important; }
+
+/* ── CONFETTI UTILITY ────────────────────────────────────────────── */
+.confetti-container {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 9999;
+}
+
+/* ── LIGHT THEME OVERRIDES ───────────────────────────────────────── */
+[data-theme="light"] {
+  --space-900:   #f0f0f8;
+  --space-800:   #e8e8f2;
+  --text-100:    #0f0f1a;
+  --text-200:    #2a2a42;
+  --text-300:    #4a4a6a;
+  --text-400:    #8888aa;
+  --glass-bg:    rgba(0,0,0,0.04);
+  --glass-border: rgba(0,0,0,0.08);
+  --glass-border-md: rgba(0,0,0,0.12);
+}
+[data-theme="light"] body {
+  background: var(--space-900);
+  color: var(--text-100);
+}
+[data-theme="light"] header {
+  background: rgba(240,240,248,0.85) !important;
+  border-bottom-color: rgba(139,92,246,0.2) !important;
+}
+
+/* ── COPY BUTTON ANIMATION ───────────────────────────────────────── */
+@keyframes copy-flash {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+.copy-flash { animation: copy-flash 0.3s ease; }
+
+/* ── RADAR CHART CONTAINER ───────────────────────────────────────── */
+.radar-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── RESPONSIVE BREAKPOINTS ──────────────────────────────────────── */
+@media (max-width: 900px) {
+  .score-hero-card {
+    flex-direction: column !important;
+  }
+  .score-hero-card > div:last-child {
+    order: -1;
+  }
+}
+
 @media (max-width: 768px) {
   .page-header { padding: 0 16px; }
   .gradient-title-main, .gradient-title-sub { font-size: 28px; }
+
+  /* Results tabs */
+  .results-tabs button { padding: 10px 8px !important; font-size: 11px !important; }
+
+  /* Upload grid */
+  .company-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Header actions */
+  .header-actions { gap: 8px !important; }
+  .header-actions .ghost-btn { padding: 6px 10px !important; font-size: 11px !important; }
+
+  /* Stats grid */
+  .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Strengths grid */
+  .strengths-grid { grid-template-columns: 1fr !important; }
+
+  /* Score hero layout */
+  .score-hero-inner {
+    flex-direction: column !important;
+    gap: 24px !important;
+  }
 }
+
+@media (max-width: 480px) {
+  .company-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .stats-grid { grid-template-columns: 1fr !important; }
+  .results-tabs { gap: 4px !important; }
+  .results-tabs button { padding: 8px 4px !important; font-size: 10px !important; }
+}
+
+/* ── DASHBOARD GRID UTILITIES ───────────────────────────────────── */
+.dashboard-hero-grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr;
+  gap: 24px;
+  margin-bottom: 32px;
+  align-items: stretch;
+}
+.dashboard-hero-grid.single-col {
+  grid-template-columns: 1fr;
+}
+
+.interview-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.upload-form-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 32px;
+}
+
+@media (max-width: 900px) {
+  .dashboard-hero-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .interview-options-grid,
+  .upload-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+}
+
+

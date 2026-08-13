@@ -5,7 +5,8 @@ const fs      = require("fs");
 const path    = require("path");
 const axios   = require("axios");
 const { auditAIQuestionsGrounding } = require("../utils/hallucination-checker");
-const { getSeenQuestions, markQuestionsSeen, getLeaderboard, recordScore, getCompanyCgpa, setCompanyCgpa } = require("../utils/question-ledger");
+const { getSeenQuestions, markQuestionsSeen, getLeaderboard, recordScore, getCompanyCgpa, setCompanyCgpa, loadTickets, addTicket, resolveTicket } = require("../utils/question-ledger");
+const questionCache = require("../utils/question-cache");
 
 const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
 const MODEL      = "llama3.2:1b";
@@ -73,6 +74,22 @@ router.post("/questions", async (req, res) => {
 
     console.log(`[Interview] Generating questions for: ${jobRole} at ${companyName || "General"} | Candidate: ${candidateEmail || "unknown"}`);
 
+    // ── Check Question Cache ────────────────────────────────────────────────
+    const cachedQuestions = questionCache.get(companyName, jobRole);
+    if (cachedQuestions) {
+      console.log(`[ZTA-L14] Found cached questions for ${companyName} / ${jobRole}`);
+      if (candidateEmail) {
+        markQuestionsSeen(candidateEmail, cachedQuestions);
+      }
+      return res.json({
+        success: true,
+        questions: cachedQuestions,
+        groundingAudit: auditAIQuestionsGrounding(cachedQuestions, resumeText),
+        uniquenessEnforced: !!candidateEmail,
+        cached: true
+      });
+    }
+
     // ── ZTA-L14: Question Uniqueness Check ──────────────────────────────────
     let seenQuestions = [];
     if (candidateEmail) {
@@ -103,7 +120,7 @@ RULES:
 - 3 technical questions with timeLimit 90
 - 2 behavioural questions with timeLimit 120
 - 2 situational questions with timeLimit 120
-- EVERY question must be completely UNIQUE, creative, and distinct for this candidate to prevent question leakages.`;
+- EVERY question must be completely UNIQUE, creative, and distinct for this candidate to prevent question leakages.
 
 Resume:
 ${resumeText.substring(0, 3000)}
@@ -148,6 +165,12 @@ Example:
     }
 
     console.log(`[Interview] ${clean.length} questions ready — ZTA-L13 Grounding Passed: ${groundingAudit.passed}`);
+    
+    // Store in cache
+    if (clean.length > 0) {
+      questionCache.set(companyName, jobRole, clean);
+    }
+
     res.json({ success: true, questions: clean, groundingAudit, uniquenessEnforced: !!candidateEmail });
 
   } catch (err) {
@@ -268,6 +291,54 @@ router.post("/company-settings", (req, res) => {
   } catch (err) {
     console.error("[Settings Post Error]", err.message);
     res.status(500).json({ error: "Failed to save company settings." });
+  }
+});
+
+// ── GET /api/interview/tickets ────────────────────────────────────────────────
+router.get("/tickets", (req, res) => {
+  try {
+    const list = loadTickets();
+    res.json({ success: true, tickets: list });
+  } catch (err) {
+    console.error("[Tickets Get Error]", err.message);
+    res.status(500).json({ error: "Failed to load support tickets." });
+  }
+});
+
+// ── POST /api/interview/tickets ───────────────────────────────────────────────
+router.post("/tickets", (req, res) => {
+  try {
+    const { category, subject, description, email, company } = req.body;
+    if (!category || !subject || !description || !email) {
+      return res.status(400).json({ error: "category, subject, description, and email are required." });
+    }
+    const tkt = addTicket({
+      id: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
+      category,
+      subject,
+      description,
+      email,
+      company: company || "General",
+      status: "Open",
+      date: new Date().toISOString().split("T")[0]
+    });
+    res.json({ success: true, ticket: tkt });
+  } catch (err) {
+    console.error("[Tickets Post Error]", err.message);
+    res.status(500).json({ error: "Failed to submit support ticket." });
+  }
+});
+
+// ── POST /api/interview/tickets/resolve ───────────────────────────────────────
+router.post("/tickets/resolve", (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: "id is required." });
+    const success = resolveTicket(id);
+    res.json({ success });
+  } catch (err) {
+    console.error("[Tickets Resolve Error]", err.message);
+    res.status(500).json({ error: "Failed to resolve support ticket." });
   }
 });
 

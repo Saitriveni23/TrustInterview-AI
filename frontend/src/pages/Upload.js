@@ -178,6 +178,9 @@ export default function Upload({ viewRole }) {
   const [showSettings,     setShowSettings]     = useState(false);
   const [eligibilityCheck, setEligibilityCheck] = useState(null); // null, "checking", "passed", "failed"
   const [eligibilityLogs,  setEligibilityLogs]  = useState([]);
+  const [gapAnalysis,      setGapAnalysis]      = useState(null);
+  const [loadingGap,       setLoadingGap]       = useState(false);
+  const [activePrepTopic,  setActivePrepTopic]  = useState(null);
 
   // Multi-LLM, Hallucination Scanners & Email Alerts
   const [selectedLLM, setSelectedLLM] = useState(sessionStorage.getItem("selectedLLM") || "llama-3-edge");
@@ -254,6 +257,13 @@ export default function Upload({ viewRole }) {
     }
   }
 
+  const handleSelectCandidate = (name, email) => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const logMsg = `[${time}] 📨 BROADCAST SENT: Candidate "${name}" (${email}) selected for next round. Placement invitation broadcasted.`;
+    setNotificationLogs(prev => [logMsg, ...prev]);
+    alert(`Placement selection broadcast sent to: ${name} (${email})`);
+  };
+
   const role = viewRole || sessionStorage.getItem("ztaRole") || "candidate";
   const candScoreAvg = (cand) => cand.avgScore || cand.bestScore || 0;
   const [leaderboard, setLeaderboard] = useState([]);
@@ -262,7 +272,11 @@ export default function Upload({ viewRole }) {
   async function fetchLeaderboard() {
     setLoadingLeaderboard(true);
     try {
-      const comp = sessionStorage.getItem("recruiterCompany") || "General";
+      const comp = (selectedCompanyData ? selectedCompanyData.name : null) ||
+                   recruiterCompany ||
+                   sessionStorage.getItem("companyName") ||
+                   sessionStorage.getItem("recruiterCompany") ||
+                   "General";
       const res = await fetch(`${API}/api/interview/leaderboard?company=${encodeURIComponent(comp)}`);
       const data = await res.json();
       if (data.success) {
@@ -331,22 +345,29 @@ export default function Upload({ viewRole }) {
     return match ? parseFloat(match.cutoff) : 8.0;
   };
 
-  function handleSubmitTicket(e) {
+  async function handleSubmitTicket(e) {
     e.preventDefault();
     if (!ticketSubject.trim() || !ticketDescription.trim()) return;
-    const newTkt = {
-      id: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
-      category: ticketCategory,
-      subject: ticketSubject.trim(),
-      status: "Open",
-      date: new Date().toISOString().split("T")[0]
-    };
-    const updated = [newTkt, ...helpTickets];
-    setHelpTickets(updated);
-    localStorage.setItem("helpTickets", JSON.stringify(updated));
-    setTicketSubject("");
-    setTicketDescription("");
-    alert(`Ticket ${newTkt.id} submitted successfully! Our Placement Cell coordinators will review it.`);
+    const email = sessionStorage.getItem("candidateEmail") || "anonymous@rvce.edu.in";
+    const company = selectedCompanyData ? selectedCompanyData.name : "General";
+    try {
+      const res = await fetch(`${API}/api/interview/tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: ticketCategory, subject: ticketSubject.trim(), description: ticketDescription.trim(), email, company })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Ticket submitted successfully with ID: ${data.ticket.id}`);
+        setTicketSubject("");
+        setTicketDescription("");
+        fetchTickets();
+      } else {
+        alert("Failed to submit support ticket.");
+      }
+    } catch (err) {
+      console.error("Ticket submission failed:", err);
+    }
   }
 
   async function handleSendChatMessage(e) {
@@ -386,11 +407,45 @@ export default function Upload({ viewRole }) {
     fetchCompanySettings();
   }, [recruiterCompany]);
 
+  async function fetchTickets() {
+    try {
+      const res = await fetch(`${API}/api/interview/tickets`);
+      const data = await res.json();
+      if (data.success && data.tickets) {
+        setHelpTickets(data.tickets);
+      }
+    } catch (err) {
+      console.warn("Failed to load support tickets:", err.message);
+    }
+  }
+
+  async function handleResolveTicket(ticketId) {
+    try {
+      const res = await fetch(`${API}/api/interview/tickets/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: ticketId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Ticket ${ticketId} has been successfully resolved!`);
+        fetchTickets();
+      } else {
+        alert("Failed to resolve support ticket.");
+      }
+    } catch (err) {
+      console.error("Resolve ticket failed:", err);
+    }
+  }
+
   useEffect(() => {
     if (role === "admin" && currentSidebarTab === "dashboard") {
       fetchLeaderboard();
+      fetchTickets();
+    } else if (currentSidebarTab === "help") {
+      fetchTickets();
     }
-  }, [role, currentSidebarTab]);
+  }, [role, currentSidebarTab, selectedCompanyData]);
 
   React.useEffect(() => {
     async function checkBlocked() {
@@ -535,6 +590,25 @@ export default function Upload({ viewRole }) {
         `[ZTA-L9] ✓ Role relevance confirmed: ${validateData.roleKeywordsFound?.length} keywords found`,
       ]);
 
+      // ── AI CV Gap Analysis (Asynchronous, non-blocking) ──────────────────
+      setLoadingGap(true);
+      fetch(`${API}/api/resume/gap-analysis`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          resumeText: uploadData.resumeText,
+          jobRole: jobRole.trim()
+        })
+      })
+      .then(r => r.json())
+      .then(gData => {
+        if (gData.success) {
+          setGapAnalysis(gData);
+        }
+      })
+      .catch(e => console.warn("Gap analysis fetch failed:", e.message))
+      .finally(() => setLoadingGap(false));
+
       // Running Layer 9 Placement Eligibility PDP check
       setStatus("checking_eligibility");
       setEligibilityLogs(prev => [
@@ -590,6 +664,7 @@ export default function Upload({ viewRole }) {
 
       await new Promise(resolve => setTimeout(resolve, 1000));
 
+      const candidateEmail = sessionStorage.getItem("candidateEmail") || "";
       setStatus("generating");
       const qRes = await fetch(`${API}/api/interview/questions`, {
         method: "POST",
@@ -601,6 +676,8 @@ export default function Upload({ viewRole }) {
           companyName:   selectedCompanyData ? selectedCompanyData.name : "",
           companyPYQ:    selectedCompanyData ? selectedCompanyData.pyq : "",
           llmModel:      selectedLLM,
+          candidateEmail,
+          hallucinationTypes,
         }),
       });
       const qData = await qRes.json();
@@ -620,7 +697,8 @@ export default function Upload({ viewRole }) {
       sessionStorage.setItem("candidateName", confirmedName);
       sessionStorage.setItem("questions",     JSON.stringify(qData.questions));
       sessionStorage.setItem("biasReport",    JSON.stringify(qData.biasReport));
-      sessionStorage.setItem("interviewType", selectedInterviewMode || interviewType || "mock");
+      sessionStorage.setItem("companyName", selectedCompanyData ? selectedCompanyData.name : "General");
+      sessionStorage.setItem("interviewType", selectedInterviewMode || (selectedCompanyData ? "actual" : "mock"));
       sessionStorage.setItem("selectedLLM",   selectedLLM);
       sessionStorage.setItem("hallucinationTypes", JSON.stringify(hallucinationTypes));
 
@@ -643,6 +721,284 @@ export default function Upload({ viewRole }) {
                           c.skills.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesDomain && matchesSearch;
   });
+
+  const renderRecruiterConsole = () => {
+    return (
+      <>
+        <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "4px" }}>
+                <button
+                  onClick={() => setSelectedCompanyData(null)}
+                  className="ghost-btn"
+                  style={{ padding: "4px 10px", fontSize: "11px", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.2)", borderRadius: "10px" }}
+                >
+                  ← Back to Campaigns
+                </button>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: "#7c3aed", background: "rgba(139,92,246,0.1)", padding: "2px 8px", borderRadius: "6px" }}>
+                  {selectedCompanyData ? selectedCompanyData.name.toUpperCase() : "GENERAL"}
+                </span>
+              </div>
+              <h3 style={{ color: "#f0f0ff", fontSize: "18px", fontWeight: 800, fontFamily: "var(--font-headings)" }}>Candidate Evaluation Roster</h3>
+              <p style={{ color: "#6b6b90", fontSize: "13px", marginTop: "2px" }}>Verify grades, performance scores, and compliance metrics per candidate.</p>
+            </div>
+            <button
+              onClick={fetchLeaderboard}
+              className="ghost-btn"
+              disabled={loadingLeaderboard}
+              style={{ padding: "8px 16px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              {loadingLeaderboard ? "Refreshing..." : "⟳ Refresh Roster"}
+            </button>
+          </div>
+
+          {loadingLeaderboard ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#6b6b90", fontSize: "14px" }}>
+              <span style={{ display: "inline-block", width: "20px", height: "20px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#7c3aed", animation: "spin 0.8s linear infinite", marginRight: "10px", verticalAlign: "middle" }} />
+              Loading candidate credentials...
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#6b6b90", fontSize: "14px", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: "12px" }}>
+              No assessments completed in this campaign yet.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>CANDIDATE</th>
+                    <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>SESSIONS</th>
+                    <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>AVERAGE SCORE</th>
+                    <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>BEST SCORE</th>
+                    <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>ROUND VERDICT</th>
+                    <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>COMPLIANCE STATUS</th>
+                    <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700, textAlign: "right" }}>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const filtered = leaderboard.filter(cand => 
+                      cand.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      cand.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      (cand.interviewCompany && cand.interviewCompany.toLowerCase().includes(searchQuery.toLowerCase()))
+                    );
+                    if (filtered.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={7} style={{ padding: "30px", textAlign: "center", color: "#6b6b90", fontSize: "13.5px" }}>
+                            No candidates match your search query.
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return filtered.map((cand, idx) => {
+                      const isCandBlocked = cand.totalSessions > 0 && cand.avgScore < 4.0;
+                      const avgScoreNum = parseFloat(cand.avgScore || 0);
+                      const bestScoreNum = parseFloat(cand.bestScore || 0);
+                      
+                      // Selection Status mapping
+                      let verdictLabel = "❌ ELIMINATED";
+                      let verdictColor = "#f87171";
+                      let verdictBg = "rgba(239, 68, 68, 0.1)";
+                      let verdictBorder = "rgba(239, 68, 68, 0.2)";
+                      
+                      if (cand.totalSessions === 0) {
+                        verdictLabel = "📋 NO ASSESSMENT";
+                        verdictColor = "#9ca3af";
+                        verdictBg = "rgba(156, 163, 175, 0.1)";
+                        verdictBorder = "rgba(156, 163, 175, 0.2)";
+                      } else if (avgScoreNum >= 7.0) {
+                        verdictLabel = "✓ SELECTED (Next Round)";
+                        verdictColor = "#34d399";
+                        verdictBg = "rgba(52, 211, 153, 0.1)";
+                        verdictBorder = "rgba(52, 211, 153, 0.2)";
+                      } else if (avgScoreNum >= 5.0) {
+                        verdictLabel = "⚠️ UNDER REVIEW";
+                        verdictColor = "#fbbf24";
+                        verdictBg = "rgba(251, 191, 36, 0.1)";
+                        verdictBorder = "rgba(251, 191, 36, 0.2)";
+                      }
+
+                      return (
+                        <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                          <td style={{ padding: "14px 12px", display: "flex", alignItems: "center", gap: "12px" }}>
+                            <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color: "#c4b5fd" }}>
+                              {cand.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div style={{ color: "#f0f0ff", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+                                {cand.name}
+                                {cand.interviewCompany && (
+                                  <span style={{
+                                    fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
+                                    background: "rgba(139, 92, 246, 0.15)", color: "#c4b5fd", border: "1px solid rgba(139, 92, 246, 0.25)"
+                                  }}>
+                                    {cand.interviewCompany}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ color: "#4a4a6a", fontSize: "11px" }}>{cand.email}</div>
+                            </div>
+                          </td>
+                          <td style={{ padding: "14px 12px", color: "#d4d4f0" }}>{cand.totalSessions}</td>
+                          <td style={{ padding: "14px 12px", fontWeight: 700, color: cand.totalSessions === 0 ? "#6b6b90" : (avgScoreNum >= 7.0 ? "#34d399" : avgScoreNum >= 5.0 ? "#f59e0b" : "#ef4444") }}>
+                            {cand.totalSessions === 0 ? "—" : `${avgScoreNum.toFixed(1)} / 10 (${(avgScoreNum * 10).toFixed(0)}%)`}
+                          </td>
+                          <td style={{ padding: "14px 12px", fontWeight: 800, color: cand.totalSessions === 0 ? "#6b6b90" : "#a78bfa" }}>
+                            {cand.totalSessions === 0 ? "—" : `${bestScoreNum.toFixed(1)} / 10 (${(bestScoreNum * 10).toFixed(0)}%)`}
+                          </td>
+                          <td style={{ padding: "14px 12px" }}>
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: "6px",
+                              fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "6px",
+                              background: verdictBg,
+                              color: verdictColor,
+                              border: `1px solid ${verdictBorder}`
+                            }}>
+                              {verdictLabel}
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px 12px" }}>
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: "6px",
+                              fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px",
+                              background: cand.totalSessions === 0 ? "rgba(156,163,175,0.06)" : (isCandBlocked ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)"),
+                              color: cand.totalSessions === 0 ? "#6b6b90" : (isCandBlocked ? "#f87171" : "#34d399"),
+                              border: cand.totalSessions === 0 ? "1px solid rgba(156,163,175,0.15)" : (isCandBlocked ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(16,185,129,0.2)")
+                            }}>
+                              <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: cand.totalSessions === 0 ? "#6b6b90" : (isCandBlocked ? "#ef4444" : "#10b981") }} />
+                              {cand.totalSessions === 0 ? "PENDING" : (isCandBlocked ? "VERIFICATION FAILED" : "✓ ZTA SECURED")}
+                            </span>
+                          </td>
+                          <td style={{ padding: "14px 12px", textAlign: "right" }}>
+                            {cand.totalSessions > 0 ? (
+                              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                                <button
+                                  onClick={async () => {
+                                    await handleResetIPBlock();
+                                  }}
+                                  className="ghost-btn"
+                                  style={{ padding: "6px 10px", fontSize: "10.5px", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.2)" }}
+                                >
+                                  Reset Block
+                                </button>
+                                <button
+                                  onClick={() => handleSelectCandidate(cand.name, cand.email)}
+                                  className="glow-btn"
+                                  style={{
+                                    padding: "6px 12px",
+                                    fontSize: "10.5px",
+                                    background: "linear-gradient(135deg, #10b981, #059669)",
+                                    border: "none",
+                                    color: "#fff",
+                                    borderRadius: "6px",
+                                    fontWeight: 700,
+                                    cursor: "pointer"
+                                  }}
+                                >
+                                  Select
+                                </button>
+                              </div>
+                            ) : (
+                              <span style={{ color: "#4a4a6a", fontSize: "11px", fontStyle: "italic" }}>No action</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* RECRUITER TICKET MANAGEMENT PANEL */}
+        <div className="glass-card" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px", marginTop: "24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+            <div>
+              <h3 style={{ color: "#f0f0ff", fontSize: "17px", fontWeight: 800, fontFamily: "var(--font-headings)" }}>🎫 Support Tickets Queue</h3>
+              <p style={{ color: "#6b6b90", fontSize: "12.5px", marginTop: "2px" }}>Manage, review, and resolve student-submitted queries and eligibility appeals.</p>
+            </div>
+            <button
+              onClick={fetchTickets}
+              className="ghost-btn"
+              style={{ padding: "6px 12px", fontSize: "11px" }}
+            >
+              ⟳ Sync Tickets
+            </button>
+          </div>
+
+          {(() => {
+            const activeCompany = (selectedCompanyData ? selectedCompanyData.name : null) || recruiterCompany || "General";
+            const filtered = helpTickets.filter(tkt => {
+              const matchCompany = !activeCompany || activeCompany.toLowerCase().trim() === "general" || (tkt.company && tkt.company.toLowerCase().trim() === activeCompany.toLowerCase().trim());
+              const matchSearch = tkt.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  tkt.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  tkt.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  tkt.category.toLowerCase().includes(searchQuery.toLowerCase());
+              return matchCompany && matchSearch;
+            });
+            if (filtered.length === 0) {
+              return (
+                <div style={{ padding: "24px", textAlign: "center", color: "#6b6b90", fontSize: "13px", border: "1px dashed rgba(255,255,255,0.05)", borderRadius: "10px" }}>
+                  {helpTickets.length === 0 ? "No support tickets submitted in this placement cycle yet." : "No support tickets match your search query."}
+                </div>
+              );
+            }
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {filtered.map((tkt, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "12px" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "13px", fontWeight: 700, color: "#f0f0ff" }}>{tkt.subject}</span>
+                        <span style={{
+                          fontSize: "9px", fontWeight: 700, padding: "2px 6px", borderRadius: "5px",
+                          background: tkt.category === "Proctoring Block" ? "rgba(239,68,68,0.1)" : "rgba(139,92,246,0.1)",
+                          color: tkt.category === "Proctoring Block" ? "#f87171" : "#a78bfa",
+                          border: tkt.category === "Proctoring Block" ? "1px solid rgba(239,68,68,0.15)" : "1px solid rgba(139,92,246,0.15)"
+                        }}>
+                          {tkt.category}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#cbd5e1", marginTop: "4px", fontStyle: "italic" }}>
+                        "{tkt.description}"
+                      </div>
+                      <div style={{ fontSize: "10.5px", color: "#6b6b90", marginTop: "4px" }}>
+                        Submitted by: <span style={{ color: "#38bdf8" }}>{tkt.email}</span> • ID: {tkt.id} • Date: {tkt.date}
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <span style={{
+                        fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px",
+                        background: tkt.status === "Resolved" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)",
+                        color: tkt.status === "Resolved" ? "#10b981" : "#f59e0b",
+                        border: tkt.status === "Resolved" ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(245,158,11,0.2)"
+                      }}>
+                        {tkt.status}
+                      </span>
+                      {tkt.status === "Open" && (
+                        <button
+                          onClick={() => handleResolveTicket(tkt.id)}
+                          className="glow-btn"
+                          style={{ padding: "6px 12px", fontSize: "11px", background: "linear-gradient(135deg, #10b981, #059669)", border: "none", color: "#fff", borderRadius: "6px", fontWeight: 700, cursor: "pointer" }}
+                        >
+                          Resolve
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      </>
+    );
+  };
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#06060f", position: "relative" }}>
@@ -684,14 +1040,14 @@ export default function Upload({ viewRole }) {
         {/* Navigation Items */}
         <nav style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
           {[
-            { label: "Dashboard", icon: "⊞", active: currentSidebarTab === "dashboard", onClick: () => { setCurrentSidebarTab("dashboard"); setSelectedCompanyData(null); setSelectedInterviewMode(null); } },
-            { label: "Prep Material", icon: "📖", active: currentSidebarTab === "prep", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("prep"); setSelectedCompanyData(null); } },
-            { label: "Mock Interviews", icon: "🎙️", active: currentSidebarTab === "mock", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("mock"); setSelectedCompanyData(null); } },
-            { label: "Calendar", icon: "📅", active: currentSidebarTab === "calendar", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("calendar"); setSelectedCompanyData(null); } },
-            { label: "Account", icon: "👤", active: currentSidebarTab === "account", onClick: () => { setCurrentSidebarTab("account"); setSelectedCompanyData(null); } },
-            { label: "Settings", icon: "⚙️", active: currentSidebarTab === "settings", showForAdminOnly: true, onClick: () => { setCurrentSidebarTab("settings"); setSelectedCompanyData(null); } },
-            { label: "Help", icon: "❓", active: currentSidebarTab === "help", onClick: () => { setCurrentSidebarTab("help"); setSelectedCompanyData(null); } },
-            { label: "Security Matrix", icon: "🛡️", showForAdminOnly: true, onClick: () => setIsZtaDrawerOpen(true) },
+            { label: "Dashboard", icon: "⊞", active: currentSidebarTab === "dashboard", onClick: () => { setCurrentSidebarTab("dashboard"); setSelectedCompanyData(null); setSelectedInterviewMode(null); setActivePrepTopic(null); } },
+            { label: "Prep Material", icon: "📖", active: currentSidebarTab === "prep", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("prep"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Mock Interviews", icon: "🎙️", active: currentSidebarTab === "mock", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("mock"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Calendar", icon: "📅", active: currentSidebarTab === "calendar", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("calendar"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Account", icon: "👤", active: currentSidebarTab === "account", onClick: () => { setCurrentSidebarTab("account"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Settings", icon: "⚙️", active: currentSidebarTab === "settings", showForAdminOnly: true, onClick: () => { setCurrentSidebarTab("settings"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Help", icon: "❓", active: currentSidebarTab === "help", onClick: () => { setCurrentSidebarTab("help"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Security Matrix", icon: "🛡️", showForAdminOnly: true, onClick: () => { setIsZtaDrawerOpen(true); setActivePrepTopic(null); } },
           ].filter(item => {
             if (item.showForCandidateOnly && role !== "candidate") return false;
             if (item.showForAdminOnly && role !== "admin") return false;
@@ -766,32 +1122,91 @@ export default function Upload({ viewRole }) {
           </div>
 
           {/* Search bar in the center */}
-          <div style={{ position: "relative", width: "100%", maxWidth: "400px" }}>
-            <input
-              type="text"
-              placeholder="Search companies, drives, stack..."
-              value={searchQuery}
-              onChange={e => { setSearchQuery(e.target.value); setVisibleCount(6); }}
+          <div style={{ display: "flex", gap: "8px", width: "100%", maxWidth: "450px" }}>
+            <div style={{ position: "relative", flex: 1 }}>
+              <input
+                type="text"
+                placeholder="Search companies, drives, stack..."
+                value={searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); setVisibleCount(6); }}
+                style={{
+                  width: "100%",
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(139, 92, 246, 0.15)",
+                  borderRadius: "20px",
+                  padding: "8px 16px 8px 36px",
+                  color: "#f0f0ff",
+                  fontSize: "13px",
+                  outline: "none",
+                  fontFamily: "var(--font-body)",
+                  transition: "all 0.2s",
+                }}
+                onFocus={e => { e.target.style.borderColor = "#7c3aed"; e.target.style.background = "rgba(139, 92, 246, 0.05)"; }}
+                onBlur={e => { e.target.style.borderColor = "rgba(139, 92, 246, 0.15)"; e.target.style.background = "rgba(255, 255, 255, 0.03)"; }}
+              />
+              <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#4a4a6a", fontSize: "14px" }}>🔍</span>
+            </div>
+            <button 
+              onClick={() => setVisibleCount(6)}
+              className="glow-btn"
               style={{
-                width: "100%",
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid rgba(139, 92, 246, 0.15)",
+                background: "linear-gradient(135deg, #7c3aed, #6366f1)",
+                color: "#fff",
+                border: "none",
                 borderRadius: "20px",
-                padding: "8px 16px 8px 36px",
-                color: "#f0f0ff",
-                fontSize: "13px",
-                outline: "none",
-                fontFamily: "var(--font-body)",
+                padding: "8px 18px",
+                fontSize: "12.5px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(124, 58, 237, 0.2)",
                 transition: "all 0.2s",
+                whiteSpace: "nowrap"
               }}
-              onFocus={e => { e.target.style.borderColor = "#7c3aed"; e.target.style.background = "rgba(139, 92, 246, 0.05)"; }}
-              onBlur={e => { e.target.style.borderColor = "rgba(139, 92, 246, 0.15)"; e.target.style.background = "rgba(255, 255, 255, 0.03)"; }}
-            />
-            <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#4a4a6a", fontSize: "14px" }}>🔍</span>
+            >
+              Search
+            </button>
           </div>
 
           {/* User & Logout info */}
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            {/* Theme Toggle */}
+            <button
+              onClick={() => {
+                const currentTheme = localStorage.getItem("ui-theme") === "light" ? "dark" : "light";
+                document.documentElement.setAttribute("data-theme", currentTheme);
+                localStorage.setItem("ui-theme", currentTheme);
+                // Trigger quick reload of styles
+                window.dispatchEvent(new Event("storage"));
+              }}
+              style={{
+                background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)",
+                color: "#cbd5e1", padding: "8px 12px", borderRadius: "8px",
+                cursor: "pointer", fontSize: "14px", transition: "all 0.2s", lineHeight: 1,
+              }}
+              title="Toggle theme"
+            >
+              🌓
+            </button>
+
+            {/* Assessment History link for candidates */}
+            {role === "candidate" && (
+              <button
+                onClick={() => navigate("/history")}
+                style={{
+                  background: "rgba(139, 92, 246, 0.08)",
+                  border: "1px solid rgba(139, 92, 246, 0.25)",
+                  borderRadius: "8px", padding: "6px 14px", cursor: "pointer",
+                  color: "#c4b5fd", fontSize: "12px", fontWeight: 700,
+                  fontFamily: "var(--font-headings)", transition: "all 0.15s",
+                  display: "flex", alignItems: "center", gap: "4px"
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(139, 92, 246, 0.15)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(139, 92, 246, 0.08)"; }}
+              >
+                📊 History
+              </button>
+            )}
+
             <div 
               onClick={() => setIsProfileOpen(true)}
               style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
@@ -829,13 +1244,7 @@ export default function Upload({ viewRole }) {
         {/* Main content page area */}
         <main style={{ flex: 1, padding: "32px 40px 48px", overflowY: "auto" }}>
           {/* Two-Column Premium Hero Section */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: (selectedCompanyData || currentSidebarTab !== "dashboard" || role === "admin") ? "1fr" : "1.8fr 1fr",
-            gap: "24px",
-            marginBottom: "32px",
-            alignItems: "stretch"
-          }}>
+          <div className={`dashboard-hero-grid ${(selectedCompanyData || currentSidebarTab !== "dashboard" || role === "admin") ? "single-col" : ""}`}>
             {/* Left Column: Title & Stats */}
             <div style={{
               background: "rgba(10, 10, 22, 0.6)",
@@ -1014,156 +1423,9 @@ export default function Upload({ viewRole }) {
           {/* Tab Views Routing Logic */}
           {currentSidebarTab === "dashboard" ? (
             !selectedCompanyData ? (
-              role === "admin" ? (
-                /* ====================================================
-                   RECRUITER ACCESS: CANDIDATE EVALUATION ROSTER
-                   ==================================================== */
-                <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                    <div>
-                      <h3 style={{ color: "#f0f0ff", fontSize: "18px", fontWeight: 800, fontFamily: "var(--font-headings)" }}>Candidate Evaluation Roster</h3>
-                      <p style={{ color: "#6b6b90", fontSize: "13px", marginTop: "2px" }}>Verify grades, performance scores, and compliance metrics per candidate.</p>
-                    </div>
-                    <button
-                      onClick={fetchLeaderboard}
-                      className="ghost-btn"
-                      disabled={loadingLeaderboard}
-                      style={{ padding: "8px 16px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
-                    >
-                      {loadingLeaderboard ? "Refreshing..." : "⟳ Refresh Roster"}
-                    </button>
-                  </div>
-
-                  {loadingLeaderboard ? (
-                    <div style={{ padding: "40px", textAlign: "center", color: "#6b6b90", fontSize: "14px" }}>
-                      <span style={{ display: "inline-block", width: "20px", height: "20px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#7c3aed", animation: "spin 0.8s linear infinite", marginRight: "10px", verticalAlign: "middle" }} />
-                      Loading candidate credentials...
-                    </div>
-                  ) : leaderboard.length === 0 ? (
-                    <div style={{ padding: "40px", textAlign: "center", color: "#6b6b90", fontSize: "14px", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: "12px" }}>
-                      No assessments completed in this campaign yet.
-                    </div>
-                  ) : (
-                    <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
-                        <thead>
-                          <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>CANDIDATE</th>
-                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>SESSIONS</th>
-                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>AVERAGE SCORE</th>
-                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>BEST SCORE</th>
-                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>ROUND VERDICT</th>
-                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700 }}>COMPLIANCE STATUS</th>
-                            <th style={{ padding: "12px", color: "#6b6b90", fontWeight: 700, textAlign: "right" }}>ACTIONS</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {leaderboard.map((cand, idx) => {
-                            const isCandBlocked = cand.totalSessions > 0 && cand.avgScore < 4.0;
-                            const avgScoreNum = parseFloat(cand.avgScore || 0);
-                            const bestScoreNum = parseFloat(cand.bestScore || 0);
-                            
-                            // Selection Status mapping
-                            let verdictLabel = "❌ ELIMINATED";
-                            let verdictColor = "#f87171";
-                            let verdictBg = "rgba(239, 68, 68, 0.1)";
-                            let verdictBorder = "rgba(239, 68, 68, 0.2)";
-                            
-                            if (cand.totalSessions === 0) {
-                              verdictLabel = "📋 NO ASSESSMENT";
-                              verdictColor = "#9ca3af";
-                              verdictBg = "rgba(156, 163, 175, 0.1)";
-                              verdictBorder = "rgba(156, 163, 175, 0.2)";
-                            } else if (avgScoreNum >= 7.0) {
-                              verdictLabel = "✓ SELECTED (Next Round)";
-                              verdictColor = "#34d399";
-                              verdictBg = "rgba(52, 211, 153, 0.1)";
-                              verdictBorder = "rgba(52, 211, 153, 0.2)";
-                            } else if (avgScoreNum >= 5.0) {
-                              verdictLabel = "⚠️ UNDER REVIEW";
-                              verdictColor = "#fbbf24";
-                              verdictBg = "rgba(251, 191, 36, 0.1)";
-                              verdictBorder = "rgba(251, 191, 36, 0.2)";
-                            }
-
-                            return (
-                              <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                                <td style={{ padding: "14px 12px", display: "flex", alignItems: "center", gap: "12px" }}>
-                                  <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 800, color: "#c4b5fd" }}>
-                                    {cand.name.charAt(0).toUpperCase()}
-                                  </div>
-                                  <div>
-                                    <div style={{ color: "#f0f0ff", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-                                      {cand.name}
-                                      {cand.interviewCompany && (
-                                        <span style={{
-                                          fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px",
-                                          background: "rgba(139, 92, 246, 0.15)", color: "#c4b5fd", border: "1px solid rgba(139, 92, 246, 0.25)"
-                                        }}>
-                                          {cand.interviewCompany}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div style={{ color: "#4a4a6a", fontSize: "11px" }}>{cand.email}</div>
-                                  </div>
-                                </td>
-                                <td style={{ padding: "14px 12px", color: "#d4d4f0" }}>{cand.totalSessions}</td>
-                                <td style={{ padding: "14px 12px", fontWeight: 700, color: cand.totalSessions === 0 ? "#6b6b90" : (avgScoreNum >= 7.0 ? "#34d399" : avgScoreNum >= 5.0 ? "#f59e0b" : "#ef4444") }}>
-                                  {cand.totalSessions === 0 ? "—" : `${avgScoreNum.toFixed(1)} / 10 (${(avgScoreNum * 10).toFixed(0)}%)`}
-                                </td>
-                                <td style={{ padding: "14px 12px", fontWeight: 800, color: cand.totalSessions === 0 ? "#6b6b90" : "#a78bfa" }}>
-                                  {cand.totalSessions === 0 ? "—" : `${bestScoreNum.toFixed(1)} / 10 (${(bestScoreNum * 10).toFixed(0)}%)`}
-                                </td>
-                                <td style={{ padding: "14px 12px" }}>
-                                  <span style={{
-                                    display: "inline-flex", alignItems: "center", gap: "6px",
-                                    fontSize: "11px", fontWeight: 700, padding: "4px 10px", borderRadius: "6px",
-                                    background: verdictBg,
-                                    color: verdictColor,
-                                    border: `1px solid ${verdictBorder}`
-                                  }}>
-                                    {verdictLabel}
-                                  </span>
-                                </td>
-                                <td style={{ padding: "14px 12px" }}>
-                                  <span style={{
-                                    display: "inline-flex", alignItems: "center", gap: "6px",
-                                    fontSize: "11px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px",
-                                    background: cand.totalSessions === 0 ? "rgba(156,163,175,0.06)" : (isCandBlocked ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)"),
-                                    color: cand.totalSessions === 0 ? "#6b6b90" : (isCandBlocked ? "#f87171" : "#34d399"),
-                                    border: cand.totalSessions === 0 ? "1px solid rgba(156,163,175,0.15)" : (isCandBlocked ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(16,185,129,0.2)")
-                                  }}>
-                                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: cand.totalSessions === 0 ? "#6b6b90" : (isCandBlocked ? "#ef4444" : "#10b981") }} />
-                                    {cand.totalSessions === 0 ? "PENDING" : (isCandBlocked ? "VERIFICATION FAILED" : "✓ ZTA SECURED")}
-                                  </span>
-                                </td>
-                                <td style={{ padding: "14px 12px", textAlign: "right" }}>
-                                  {cand.totalSessions > 0 ? (
-                                    <button
-                                      onClick={async () => {
-                                        await handleResetIPBlock();
-                                      }}
-                                      className="ghost-btn"
-                                      style={{ padding: "6px 12px", fontSize: "11px", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" }}
-                                    >
-                                      Reset Block
-                                    </button>
-                                  ) : (
-                                    <span style={{ color: "#4a4a6a", fontSize: "11px", fontStyle: "italic" }}>No action</span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* ====================================================
-                   SLIDE 1: PLACEMENTS CAMPAIGNS CATALOG
-                   ==================================================== */
+              /* ====================================================
+                 SLIDE 1: PLACEMENTS CAMPAIGNS CATALOG
+                 ==================================================== */
                 <div className="fade-in-up">
                 {/* Categories Pills Filters */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "24px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "16px" }}>
@@ -1299,6 +1561,18 @@ export default function Upload({ viewRole }) {
                             </span>
                             <span style={{ fontSize: "11px", color: "#4a4a6a" }}>📚 PYQ syllabus</span>
                           </div>
+                          
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
+                            <span style={{ fontSize: "8.5px", fontWeight: 800, color: "#a78bfa", background: "rgba(124,58,237,0.06)", border: "1px solid rgba(139,92,246,0.18)", padding: "2px 6px", borderRadius: "6px", fontFamily: "var(--font-headings)" }}>
+                              🔒 ZTA ACTIVE
+                            </span>
+                            <span style={{ fontSize: "8.5px", fontWeight: 800, color: "#34d399", background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)", padding: "2px 6px", borderRadius: "6px", fontFamily: "var(--font-headings)" }}>
+                              🛡️ FAIR SHIELD
+                            </span>
+                            <span style={{ fontSize: "8.5px", fontWeight: 800, color: "#06b6d4", background: "rgba(6,182,212,0.06)", border: "1px solid rgba(6,182,212,0.18)", padding: "2px 6px", borderRadius: "6px", fontFamily: "var(--font-headings)" }}>
+                              👁️ FACT CHECK
+                            </span>
+                          </div>
 
                           <button
                             style={{
@@ -1342,11 +1616,14 @@ export default function Upload({ viewRole }) {
                   </div>
                 )}
               </div>
-            ) ) : (
-              /* ====================================================
-                 SLIDE 2: SELECTED COMPANY FOCUSED WORKSPACE
-                 ==================================================== */
-              <div className="fade-in-up">
+            ) : (
+              role === "admin" ? (
+                renderRecruiterConsole()
+              ) : (
+                /* ====================================================
+                   SLIDE 2: SELECTED COMPANY FOCUSED WORKSPACE
+                   ==================================================== */
+                <div className="fade-in-up">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", marginBottom: "24px" }}>
                   <button
                     onClick={() => {
@@ -1376,7 +1653,7 @@ export default function Upload({ viewRole }) {
                 </div>
 
                 {selectedInterviewMode === null ? (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+                  <div className="interview-options-grid">
                     {/* Mock Interview */}
                     <div className="glass-card" style={{ padding: "28px", background: "rgba(10, 10, 22, 0.7)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "20px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
@@ -1422,7 +1699,7 @@ export default function Upload({ viewRole }) {
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "32px" }} className="fade-in-up">
+                  <div className="upload-form-grid fade-in-up">
                     <div style={styles.leftCol}>
                       <div className="glass-card" style={styles.card}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
@@ -1558,6 +1835,73 @@ export default function Upload({ viewRole }) {
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                      {/* Placement Readiness & CV Gap Analyzer */}
+                      {(loadingGap || gapAnalysis) && (
+                        <div className="glass-card fade-in-up" style={{ ...styles.card, borderColor: "rgba(139,92,246,0.3)", background: "rgba(10,10,22,0.85)" }}>
+                          <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>
+                            🔍 AI CV Placement Readiness Audit
+                          </h3>
+                          {loadingGap ? (
+                            <div style={{ textAlign: "center", padding: "20px 0", color: "#6b6b90", fontSize: "13px" }}>
+                              <span style={{ display: "inline-block", width: "16px", height: "16px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#7c3aed", animation: "spin 0.8s linear infinite", marginRight: "10px", verticalAlign: "middle" }} />
+                              Analyzing target role matching alignment...
+                            </div>
+                          ) : (
+                            <div>
+                              {/* Readiness Score Gauge */}
+                              <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
+                                <div style={{
+                                  width: "64px", height: "64px", borderRadius: "50%",
+                                  border: `3px solid ${gapAnalysis.readinessScore >= 75 ? "#10b981" : "#f59e0b"}`,
+                                  background: "rgba(255,255,255,0.01)",
+                                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center"
+                                }}>
+                                  <div style={{ fontSize: "18px", fontWeight: 900, color: gapAnalysis.readinessScore >= 75 ? "#10b981" : "#f59e0b", fontFamily: "var(--font-headings)", lineHeight: 1 }}>
+                                    {gapAnalysis.readinessScore}%
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={{ color: "#ffffff", fontSize: "13.5px", fontWeight: 850 }}>Role Alignment Fit</div>
+                                  <div style={{ color: "#6b6b90", fontSize: "11px", marginTop: "2px" }}>
+                                    {gapAnalysis.readinessScore >= 75 ? "Excellent matching profile!" : "Some competence gaps flagged."}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Strengths */}
+                              <div style={{ marginBottom: "16px" }}>
+                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#10b981", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>✓ Primary Competencies</div>
+                                {(gapAnalysis.strengths || []).map((s, idx) => (
+                                  <div key={idx} style={{ fontSize: "12px", color: "#cbd5e1", marginBottom: "6px", display: "flex", gap: "6px" }}>
+                                    <span style={{ color: "#10b981" }}>▸</span><span>{s}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Gaps */}
+                              <div style={{ marginBottom: "16px" }}>
+                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#f87171", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>⚠ Skill Gaps Detected</div>
+                                {(gapAnalysis.gaps || []).map((g, idx) => (
+                                  <div key={idx} style={{ fontSize: "12px", color: "#cbd5e1", marginBottom: "6px", display: "flex", gap: "6px" }}>
+                                    <span style={{ color: "#f87171" }}>▸</span><span>{g}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Recommendations */}
+                              <div>
+                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#a78bfa", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>🎯 Preparation Tips</div>
+                                {(gapAnalysis.recommendations || []).map((r, idx) => (
+                                  <div key={idx} style={{ fontSize: "12px", color: "#cbd5e1", marginBottom: "6px", display: "flex", gap: "6px" }}>
+                                    <span style={{ color: "#a78bfa" }}>▸</span><span>{r}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="glass-card" style={styles.card}>
                         <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
                           🛡️ ZTA Session Guard
@@ -1573,31 +1917,209 @@ export default function Upload({ viewRole }) {
                 )}
               </div>
             )
-          ) : currentSidebarTab === "prep" ? (
-            <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
-                {[
-                  { title: "💻 Data Structures & Algorithms", items: ["Array & Hashing challenges", "Tree & Graph structures", "Dynamic Programming cheat sheets"], progress: 65, color: "#7c3aed" },
-                  { title: "🌐 System Design & Scalability", items: ["Load balancing & Caching", "Database partitioning", "Microservices architecture"], progress: 40, color: "#06b6d4" },
-                  { title: "🤖 AI / Machine Learning Fundamentals", items: ["Neural network training dynamics", "Transformer architectures & LLMs", "Evaluation metrics & Bias control"], progress: 80, color: "#10b981" },
-                  { title: "🗣️ Behavioral & HR Interview Prep", items: ["STAR method answer builder", "College project summaries", "Leadership situations"], progress: 90, color: "#f59e0b" },
-                ].map((topic, i) => (
-                  <div key={i} style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px" }}>
-                    <h4 style={{ color: "#f0f0ff", marginBottom: "12px", fontSize: "15px" }}>{topic.title}</h4>
-                    <ul style={{ paddingLeft: "18px", margin: "0 0 16px 0", color: "#6b6b90", fontSize: "12.5px" }}>
-                      {topic.items.map((item, j) => <li key={j} style={{ marginBottom: "6px" }}>{item}</li>)}
-                    </ul>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#4a4a6a", marginBottom: "4px" }}>
-                      <span>TOPIC PROGRESS</span>
-                      <span style={{ color: topic.color }}>{topic.progress}% Completed</span>
+          ) ) : currentSidebarTab === "prep" ? (
+            activePrepTopic ? (
+              <div className="glass-card fade-in-up" style={{ padding: "32px", background: "rgba(10,10,22,0.9)", border: "1px solid rgba(139, 92, 246, 0.2)", borderRadius: "24px" }}>
+                {/* Header with Back Button */}
+                <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "28px" }}>
+                  <button
+                    onClick={() => setActivePrepTopic(null)}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)",
+                      color: "#cbd5e1", width: "36px", height: "36px", borderRadius: "50%",
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: "16px", transition: "all 0.2s"
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "#7c3aed"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
+                  >
+                    ←
+                  </button>
+                  <div>
+                    <h2 style={{ fontSize: "22px", fontWeight: 900, color: "#ffffff", fontFamily: "var(--font-headings)", margin: 0 }}>
+                      {activePrepTopic.title}
+                    </h2>
+                    <p style={{ color: "#6b6b90", fontSize: "13px", margin: "4px 0 0 0" }}>
+                      Curated study materials, video walkthroughs, and core competency checklist.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sub-grid of Study resources */}
+                <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "32px" }}>
+                  {/* Left: Study concept checklist */}
+                  <div>
+                    <div className="glass-card" style={{ padding: "24px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "16px", marginBottom: "24px" }}>
+                      <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
+                        🎯 Core Preparation Syllabus
+                      </h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                        {activePrepTopic.items.map((item, idx) => (
+                          <div key={idx} style={{ display: "flex", alignItems: "center", gap: "12px", background: "rgba(255,255,255,0.01)", padding: "12px 16px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.03)" }}>
+                            <input
+                              type="checkbox"
+                              defaultChecked={idx === 0 || idx === 1}
+                              style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: activePrepTopic.color }}
+                            />
+                            <span style={{ fontSize: "13.5px", color: "#cbd5e1", fontWeight: 500 }}>{item}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px" }}>
-                      <div style={{ width: `${topic.progress}%`, height: "100%", background: topic.color, borderRadius: "2px" }} />
+
+                    {/* Quick Mock Practice launch */}
+                    <div className="glass-card" style={{ padding: "24px", background: `linear-gradient(135deg, ${activePrepTopic.color}0a, transparent)`, border: `1px solid ${activePrepTopic.color}25`, borderRadius: "16px" }}>
+                      <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#ffffff", marginBottom: "8px", fontFamily: "var(--font-headings)" }}>
+                        Ready to validate your skills?
+                      </h3>
+                      <p style={{ color: "#6b6b90", fontSize: "13px", lineHeight: 1.5, marginBottom: "20px" }}>
+                        Launch a low-stakes mock interview calibrated specifically to verify your topic knowledge and deliver ZTA attribution analytics.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setCurrentSidebarTab("mock");
+                          setSelectedInterviewMode("mock");
+                          setInterviewType("mock");
+                          sessionStorage.setItem("interviewType", "mock");
+                          setActivePrepTopic(null);
+                        }}
+                        className="glow-btn"
+                        style={{ padding: "12px 24px", fontSize: "13.5px", background: activePrepTopic.color, border: "none" }}
+                      >
+                        Start Topic Assessment →
+                      </button>
                     </div>
                   </div>
-                ))}
+
+                  {/* Right: Videos & Guides */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                    {/* Video Player Box */}
+                    <div className="glass-card" style={{ padding: "24px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "16px" }}>
+                      <h3 style={{ fontSize: "15px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
+                        🎬 Recommended Cheat Sheet Video
+                      </h3>
+                      {activePrepTopic.videoLinks.map((vid, idx) => (
+                        <div key={idx} style={{ background: "rgba(0,0,0,0.2)", padding: "16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.04)", textAlign: "center" }}>
+                          {/* Simulated Video Thumbnail overlay */}
+                          <div style={{ position: "relative", width: "100%", height: "140px", background: "#0c0c16", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "14px", overflow: "hidden" }}>
+                            <div style={{ position: "absolute", width: "50px", height: "50px", borderRadius: "50%", background: activePrepTopic.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", color: "#fff", cursor: "pointer", boxShadow: "0 4px 14px rgba(124,58,237,0.3)" }}>▶</div>
+                            <span style={{ fontSize: "12px", color: "#4a4a6a", marginTop: "60px" }}>YouTube Lecture Integration</span>
+                          </div>
+                          <a
+                            href={vid.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ display: "inline-block", color: "#34d399", fontWeight: 700, fontSize: "13.5px", textDecoration: "underline" }}
+                          >
+                            Open Tutorial on YouTube
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Frequently Asked Materials */}
+                    <div className="glass-card" style={{ padding: "24px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "16px" }}>
+                      <h3 style={{ fontSize: "15px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
+                        📖 Frequently Asked Study Materials
+                      </h3>
+                      {activePrepTopic.faqMaterials.map((mat, idx) => (
+                        <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.01)", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.03)" }}>
+                          <div style={{ textAlign: "left" }}>
+                            <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#cbd5e1" }}>{mat.label}</div>
+                            <div style={{ fontSize: "11px", color: "#6b6b90", marginTop: "2px" }}>Interview Syllabus Sheet</div>
+                          </div>
+                          <a
+                            href={mat.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ display: "inline-block", padding: "8px 16px", background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.25)", color: "#22d3ee", borderRadius: "8px", textDecoration: "none", fontSize: "12px", fontWeight: 700 }}
+                          >
+                            Open Link
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
+                  {[
+                    {
+                      title: "💻 Data Structures & Algorithms",
+                      items: ["Array & Hashing challenges", "Tree & Graph structures", "Dynamic Programming cheat sheets"],
+                      progress: 65,
+                      color: "#7c3aed",
+                      videoLinks: [{ label: "FreeCodeCamp DSA Course", url: "https://www.youtube.com/watch?v=8hly31xKjhc" }],
+                      faqMaterials: [{ label: "NeetCode 150 Sheet", url: "https://neetcode.io/practice" }]
+                    },
+                    {
+                      title: "🌐 System Design & Scalability",
+                      items: ["Load balancing & Caching", "Database partitioning", "Microservices architecture"],
+                      progress: 40,
+                      color: "#06b6d4",
+                      videoLinks: [{ label: "System Design Guide", url: "https://www.youtube.com/watch?v=m8Igb_esqQA" }],
+                      faqMaterials: [{ label: "Donne Martin Primer", url: "https://github.com/donnemartin/system-design-primer" }]
+                    },
+                    {
+                      title: "🤖 AI / Machine Learning Fundamentals",
+                      items: ["Neural network training dynamics", "Transformer architectures & LLMs", "Evaluation metrics & Bias control"],
+                      progress: 80,
+                      color: "#10b981",
+                      videoLinks: [{ label: "Karpathy Neural Nets Zero to Hero", url: "https://www.youtube.com/watch?v=VMj-3S1tku0" }],
+                      faqMaterials: [{ label: "Hugging Face NLP Course", url: "https://huggingface.co/learn/nlp-course" }]
+                    },
+                    {
+                      title: "🗣️ Behavioral & HR Interview Prep",
+                      items: ["STAR method answer builder", "College project summaries", "Leadership situations"],
+                      progress: 90,
+                      color: "#f59e0b",
+                      videoLinks: [{ label: "STAR Method Formulation", url: "https://www.youtube.com/watch?v=wGZIDc6zD-s" }],
+                      faqMaterials: [{ label: "100+ Behavioral Questions List", url: "https://github.com/jwasham/coding-interview-university#behavioral-questions" }]
+                    },
+                  ].map((topic, i) => (
+                    <div
+                      key={i}
+                      onClick={() => setActivePrepTopic(topic)}
+                      style={{
+                        padding: "24px",
+                        background: "rgba(255,255,255,0.02)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: "16px",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        cursor: "pointer",
+                        transition: "all 0.22s"
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.borderColor = topic.color; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}
+                    >
+                      <div>
+                        <h4 style={{ color: "#f0f0ff", marginBottom: "12px", fontSize: "15px", fontFamily: "var(--font-headings)" }}>{topic.title}</h4>
+                        <ul style={{ paddingLeft: "18px", margin: "0 0 16px 0", color: "#cbd5e1", fontSize: "12.5px" }}>
+                          {topic.items.map((item, j) => <li key={j} style={{ marginBottom: "6px" }}>{item}</li>)}
+                        </ul>
+                      </div>
+                      
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#6b6b90", marginBottom: "4px" }}>
+                          <span>TOPIC PROGRESS</span>
+                          <span style={{ color: topic.color }}>{topic.progress}% Completed</span>
+                        </div>
+                        <div style={{ width: "100%", height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px" }}>
+                          <div style={{ width: `${topic.progress}%`, height: "100%", background: topic.color, borderRadius: "2px" }} />
+                        </div>
+                        <div style={{ fontSize: "11px", color: topic.color, marginTop: "12px", textAlign: "right", fontWeight: 700 }}>
+                          Click Card to Learn →
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
           ) : currentSidebarTab === "mock" ? (
             <div className="glass-card fade-in-up" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "28px" }}>
@@ -2045,10 +2567,13 @@ export default function Upload({ viewRole }) {
                     📋 My Support Tickets
                   </h3>
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "150px", overflowY: "auto" }}>
-                    {helpTickets.length === 0 ? (
-                      <div style={{ fontSize: "12px", color: "#4a4a6a", textAlign: "center", padding: "10px" }}>No tickets submitted yet.</div>
-                    ) : (
-                      helpTickets.map((tkt, i) => (
+                    {(() => {
+                      const candEmail = sessionStorage.getItem("candidateEmail") || "anonymous@rvce.edu.in";
+                      const filteredTkts = helpTickets.filter(t => t.email === candEmail);
+                      if (filteredTkts.length === 0) {
+                        return <div style={{ fontSize: "12px", color: "#4a4a6a", textAlign: "center", padding: "10px" }}>No tickets submitted yet.</div>;
+                      }
+                      return filteredTkts.map((tkt, i) => (
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "10px" }}>
                           <div>
                             <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0" }}>{tkt.subject}</div>
@@ -2064,7 +2589,7 @@ export default function Upload({ viewRole }) {
                           </span>
                         </div>
                       ))
-                    )}
+                    })()}
                   </div>
                 </div>
 

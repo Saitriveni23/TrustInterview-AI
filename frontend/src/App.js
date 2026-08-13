@@ -6,6 +6,8 @@ import Results          from "./pages/Results";
 import Login            from "./pages/Login";
 import AuthCallback     from "./pages/AuthCallback";
 import GoogleMockAuth   from "./pages/GoogleMockAuth";
+import History          from "./pages/History";
+import ErrorBoundary    from "./components/ErrorBoundary";
 
 function ProtectedRoute({ children, requiredKey, allowedRole }) {
   const hasEmail = sessionStorage.getItem("candidateEmail");
@@ -37,44 +39,63 @@ export default function App() {
 
   return (
     <BrowserRouter basename={process.env.PUBLIC_URL}>
-      <Routes>
-        {/* Auth routes */}
-        <Route path="/login" element={<Login portalType="candidate" />} />
-        <Route path="/recruiter" element={<Login portalType="employer" />} />
-        
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/google-mock-auth" element={<GoogleMockAuth />} />
-        
-        {/* Candidate Portal */}
-        <Route path="/" element={
-          <ProtectedRoute allowedRole="candidate">
-            <Upload viewRole="candidate" />
-          </ProtectedRoute>
-        } />
-        
-        {/* Recruiter Portal */}
-        <Route path="/recruiter/dashboard" element={
-          <ProtectedRoute allowedRole="admin">
-            <Upload viewRole="admin" />
-          </ProtectedRoute>
-        } />
-        
-        {/* Shared / Candidate proctored assessment */}
-        <Route path="/interview" element={
-          <ProtectedRoute requiredKey="resumeText" allowedRole="candidate">
-            <Interview />
-          </ProtectedRoute>
-        } />
-        
-        {/* Shared / Candidate score report */}
-        <Route path="/results" element={
-          <ProtectedRoute requiredKey="interviewResults" allowedRole="candidate">
-            <Results />
-          </ProtectedRoute>
-        } />
-        
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <ErrorBoundary>
+        <Routes>
+          {/* Auth routes */}
+          <Route path="/login"    element={<Login portalType="candidate" />} />
+          <Route path="/recruiter" element={<Login portalType="employer" />} />
+
+          <Route path="/auth/callback"    element={<AuthCallback />} />
+          <Route path="/google-mock-auth" element={<GoogleMockAuth />} />
+
+          {/* Candidate Portal */}
+          <Route path="/" element={
+            <ProtectedRoute allowedRole="candidate">
+              <ErrorBoundary>
+                <Upload viewRole="candidate" />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          } />
+
+          {/* Recruiter Portal */}
+          <Route path="/recruiter/dashboard" element={
+            <ProtectedRoute allowedRole="admin">
+              <ErrorBoundary>
+                <Upload viewRole="admin" />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          } />
+
+          {/* Candidate proctored assessment */}
+          <Route path="/interview" element={
+            <ProtectedRoute requiredKey="resumeText" allowedRole="candidate">
+              <ErrorBoundary>
+                <Interview />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          } />
+
+          {/* Candidate score report */}
+          <Route path="/results" element={
+            <ProtectedRoute requiredKey="interviewResults" allowedRole="candidate">
+              <ErrorBoundary>
+                <Results />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          } />
+
+          {/* Assessment History — protected, candidate only */}
+          <Route path="/history" element={
+            <ProtectedRoute allowedRole="candidate">
+              <ErrorBoundary>
+                <History />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          } />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

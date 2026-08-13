@@ -10,7 +10,10 @@ frontend/build/
 .env
 node_modules/
 logs/
-uploads/
+uploads/*.log
 .env
 .env.save
 *.env.save
+*.db
+*.db-journal
+backend/data/*.db

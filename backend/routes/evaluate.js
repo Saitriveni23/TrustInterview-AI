@@ -1,8 +1,22 @@
-const express = require("express");
-const router  = express.Router();
-const OpenAI  = require("openai");
-const axios   = require("axios");
+const express    = require("express");
+const router     = express.Router();
+const OpenAI     = require("openai");
+const axios      = require("axios");
 const { checkCandidateAnswerHallucination } = require("../utils/hallucination-checker");
+const { withRetry } = require("../utils/retry");
+
+const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
+
+async function askOllama(prompt, modelName = "llama-3-edge") {
+  const ollamaModel = modelName === "llama-3-edge" ? "llama3.2:1b" : "phi3";
+  console.log(`[ZTA-LLM] Evaluating answer on Ollama Model: ${ollamaModel}`);
+  const response = await axios.post(OLLAMA_URL, {
+    model:  ollamaModel,
+    prompt: prompt,
+    stream: false,
+  }, { timeout: 30000 });
+  return response.data.response;
+}
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -97,6 +111,35 @@ function validateFinalReportRequest(body) {
   return null;
 }
 
+function analyzeSpeech(text) {
+  const fillers = ["uhm", "uh", "um", "like", "basically", "actually", "you know", "so", "right"];
+  const counts = {};
+  let totalFillers = 0;
+  
+  const words = (text || "").toLowerCase().split(/[\s,?.!]+/);
+  const wordCount = words.filter(w => w.length > 0).length;
+  
+  for (const filler of fillers) {
+    const regex = new RegExp(`\\b${filler}\\b`, "gi");
+    const matches = text.match(regex);
+    if (matches) {
+      counts[filler] = matches.length;
+      totalFillers += matches.length;
+    }
+  }
+
+  const density = wordCount > 0 ? (totalFillers / wordCount) * 100 : 0;
+  const clarityScore = Math.max(1.0, Math.min(10.0, 10.0 - (totalFillers * 0.8)));
+
+  return {
+    fillerWords: counts,
+    fillerCount: totalFillers,
+    clarityScore: parseFloat(clarityScore.toFixed(1)),
+    density: parseFloat(density.toFixed(1)),
+    wordCount
+  };
+}
+
 router.post("/answer", async (req, res) => {
   try {
     const validationError = validateAnswerRequest(req.body);
@@ -124,34 +167,107 @@ SCORING & EVALUATION GUIDELINES:
 Respond ONLY with valid JSON. No markdown:
 {"score":7,"grade":"Good","summary":"one sentence summary","strengths":["strength 1","strength 2"],"improvements":["improvement 1","improvement 2"],"idealAnswer":"brief ideal answer"}`;
 
-    let raw;
-    try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo", messages: [{ role: "user", content: prompt }],
-        temperature: 0.4, max_tokens: 600,
-      });
-      raw = response.choices[0].message.content.trim();
-    } catch (openAiError) {
-      console.warn("[Evaluate] OpenAI failed, trying Gemini fallback:", openAiError.message);
+    // ── Cloud LLM call with exponential backoff retry ──────────────
+    async function callCloudLLM(promptText) {
+      // 1. Try OpenAI with retries
+      if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== "YOUR_OPENAI_API_KEY") {
+        try {
+          return await withRetry(async () => {
+            const response = await openai.chat.completions.create({
+              model: "gpt-3.5-turbo", messages: [{ role: "user", content: promptText }],
+              temperature: 0.4, max_tokens: 600,
+            });
+            return response.choices[0].message.content.trim();
+          }, 3, 300);
+        } catch (openAiErr) {
+          console.warn("[Evaluate] OpenAI failed after 3 retries, trying Gemini:", openAiErr.message);
+        }
+      }
+      // 2. Gemini fallback with retries
       if (process.env.GEMINI_API_KEY) {
-        raw = await askGemini(prompt);
-      } else {
-        throw openAiError;
+        return await withRetry(() => askGemini(promptText), 3, 400);
+      }
+      throw new Error("No cloud LLM available");
+    }
+
+    // ── Primary LLM selection ───────────────────────────────────────
+    let raw;
+    const modelToUse = req.body.llmModel || "llama-3-edge";
+    if (modelToUse === "llama-3-edge" || modelToUse === "phi-3-lightweight") {
+      try {
+        raw = await withRetry(() => askOllama(prompt, modelToUse), 2, 200);
+      } catch (ollamaErr) {
+        console.warn("[Evaluate] Local Ollama failed after retries, falling back to cloud:", ollamaErr.message);
       }
     }
 
-    const cleaned    = raw.replace(/```json|```/g, "").trim();
-    const evaluation = JSON.parse(cleaned);
-    const score      = Math.min(10, Math.max(0, Number(evaluation.score) || 0));
-    const grade      = score>=9?"Exceptional":score>=7?"Good":score>=5?"Average":score>=3?"Weak":"Poor";
+    if (!raw) {
+      raw = await callCloudLLM(prompt);
+    }
+
+    // ── Multi-sample scoring: ask twice, average scores ─────────────
+    let evaluation;
+    try {
+      const cleaned1 = raw.replace(/```json|```/g, "").trim();
+      evaluation     = JSON.parse(cleaned1);
+
+      // Second sample for score consistency (use same cloud model)
+      const shouldMultiSample = req.body.multiSample !== false; // opt-out via flag
+      if (shouldMultiSample) {
+        try {
+          const raw2      = await callCloudLLM(prompt);
+          const cleaned2  = raw2.replace(/```json|```/g, "").trim();
+          const eval2     = JSON.parse(cleaned2);
+          const score1    = Number(evaluation.score) || 0;
+          const score2    = Number(eval2.score) || 0;
+          const avgScore  = Math.round(((score1 + score2) / 2) * 10) / 10;
+          console.log(`[Evaluate] Multi-sample scores: ${score1} + ${score2} → avg ${avgScore}`);
+          evaluation.score = avgScore;
+          // Merge strengths/improvements from both samples (deduplicate)
+          const merge = (a, b) => [...new Set([...(a||[]), ...(b||[])])].slice(0, 4);
+          evaluation.strengths    = merge(evaluation.strengths,    eval2.strengths);
+          evaluation.improvements = merge(evaluation.improvements, eval2.improvements);
+        } catch (multiErr) {
+          console.warn("[Evaluate] Multi-sample 2nd call failed — using single sample:", multiErr.message);
+        }
+      }
+    } catch (parseErr) {
+      throw new Error("LLM returned invalid JSON: " + parseErr.message);
+    }
+
+    const score = Math.min(10, Math.max(0, Number(evaluation.score) || 0));
+    const grade = score>=9?"Exceptional":score>=7?"Good":score>=5?"Average":score>=3?"Weak":"Poor";
+
+    // ── Judge0 Code Execution (for code-type answers) ──────────────
+    let codeExecutionResult = null;
+    const isCodeAnswer = req.body.answerType === "code" && process.env.JUDGE0_API_KEY;
+    if (isCodeAnswer) {
+      try {
+        const judge0Res = await withRetry(async () => {
+          const sub = await axios.post(
+            `https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true`,
+            { source_code: answer, language_id: req.body.codeLanguageId || 63, stdin: "" },
+            { headers: { "X-RapidAPI-Key": process.env.JUDGE0_API_KEY, "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com", "Content-Type": "application/json" }, timeout: 10000 }
+          );
+          return sub.data;
+        }, 2, 500);
+        codeExecutionResult = {
+          status:   judge0Res.status?.description || "Unknown",
+          stdout:   judge0Res.stdout?.substring(0, 500) || "",
+          stderr:   judge0Res.stderr?.substring(0, 300) || "",
+          time:     judge0Res.time,
+          memory:   judge0Res.memory,
+          passed:   judge0Res.status?.id === 3, // 3 = Accepted
+        };
+        console.log(`[ZTA-Eval] Code execution: ${codeExecutionResult.status}`);
+      } catch (judgeErr) {
+        console.warn("[Evaluate] Judge0 code execution failed:", judgeErr.message);
+      }
+    }
 
     const allText = [
-      question,
-      answer,
-      evaluation.summary,
-      evaluation.idealAnswer,
-      ...(evaluation.strengths || []),
-      ...(evaluation.improvements || []),
+      question, answer, evaluation.summary, evaluation.idealAnswer,
+      ...(evaluation.strengths || []), ...(evaluation.improvements || []),
     ].join(" ");
 
     const biasResult = biasChecker.check(allText);
@@ -166,6 +282,8 @@ Respond ONLY with valid JSON. No markdown:
     const hallucinationResult = checkCandidateAnswerHallucination(answer, question, resumeText, req.body.hallucinationTypes);
     console.log(`[ZTA-L13] [${hallucinationResult.filterName}] Risk Score: ${hallucinationResult.hallucinationRiskScore}% (${hallucinationResult.truthfulnessGrade})`);
 
+    const speechResult = analyzeSpeech(answer);
+
     res.json({
       success: true, score, grade,
       summary:            evaluation.summary      || "",
@@ -174,6 +292,9 @@ Respond ONLY with valid JSON. No markdown:
       idealAnswer:        evaluation.idealAnswer  || "",
       biasCheck:          biasResult,
       hallucinationCheck: hallucinationResult,
+      codeExecution:      codeExecutionResult,
+      multiSampled:       req.body.multiSample !== false,
+      speechAnalysis:     speechResult,
     });
 
   } catch (err) {
@@ -217,18 +338,29 @@ Respond ONLY with valid JSON. No markdown:
 {"overallSummary":"2-3 sentence summary","strongSkills":["skill1","skill2"],"weakSkills":["skill1"],"recommendation":"Hire","recommendationReason":"one sentence reason","nextSteps":"one sentence advice"}`;
 
     let raw;
-    try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo", messages: [{ role: "user", content: prompt }],
-        temperature: 0.4, max_tokens: 500,
-      });
-      raw = response.choices[0].message.content.trim();
-    } catch (openAiError) {
-      console.warn("[Final Report] OpenAI failed, trying Gemini fallback:", openAiError.message);
-      if (process.env.GEMINI_API_KEY) {
-        raw = await askGemini(prompt);
-      } else {
-        throw openAiError;
+    const modelToUse = req.body.llmModel || "llama-3-edge";
+    if (modelToUse === "llama-3-edge" || modelToUse === "phi-3-lightweight") {
+      try {
+        raw = await askOllama(prompt, modelToUse);
+      } catch (ollamaErr) {
+        console.warn("[Final Report] Local Ollama failed, falling back to cloud models:", ollamaErr.message);
+      }
+    }
+
+    if (!raw) {
+      try {
+        const response = await openai.chat.completions.create({
+          model: "gpt-3.5-turbo", messages: [{ role: "user", content: prompt }],
+          temperature: 0.4, max_tokens: 500,
+        });
+        raw = response.choices[0].message.content.trim();
+      } catch (openAiError) {
+        console.warn("[Final Report] OpenAI failed, trying Gemini fallback:", openAiError.message);
+        if (process.env.GEMINI_API_KEY) {
+          raw = await askGemini(prompt);
+        } else {
+          throw openAiError;
+        }
       }
     }
 
