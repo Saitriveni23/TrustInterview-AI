@@ -18,7 +18,9 @@ async function askOllama(prompt, modelName = "llama-3-edge") {
   return response.data.response;
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== "YOUR_OPENAI_API_KEY"
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 async function askGemini(prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
@@ -170,7 +172,7 @@ Respond ONLY with valid JSON. No markdown:
     // ── Cloud LLM call with exponential backoff retry ──────────────
     async function callCloudLLM(promptText) {
       // 1. Try OpenAI with retries
-      if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== "YOUR_OPENAI_API_KEY") {
+      if (openai) {
         try {
           return await withRetry(async () => {
             const response = await openai.chat.completions.create({

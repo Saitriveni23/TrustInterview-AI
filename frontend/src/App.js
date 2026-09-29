@@ -1,98 +1,35 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Upload           from "./pages/Upload";
-import Interview        from "./pages/Interview";
-import Results          from "./pages/Results";
-import Login            from "./pages/Login";
-import AuthCallback     from "./pages/AuthCallback";
-import GoogleMockAuth   from "./pages/GoogleMockAuth";
-import History          from "./pages/History";
-import ErrorBoundary    from "./components/ErrorBoundary";
+import Upload from "./pages/Upload";
+import Interview from "./pages/Interview";
+import Results from "./pages/Results";
+import Login from "./pages/Login";
+import History from "./pages/History";
+import RecruiterDashboard from "./pages/RecruiterDashboard";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { useAuth } from "./AuthContext";
 
-function ProtectedRoute({ children, requiredKey, allowedRole }) {
-  const hasEmail = sessionStorage.getItem("candidateEmail");
-  const userRole = sessionStorage.getItem("ztaRole") || "candidate";
-
-  if (!hasEmail) {
-    const isRecruiterPath = window.location.pathname.includes("/recruiter");
-    return <Navigate to={isRecruiterPath ? "/recruiter" : "/login"} replace />;
-  }
-
-  if (allowedRole && userRole !== allowedRole) {
-    return <Navigate to={userRole === "admin" ? "/recruiter/dashboard" : "/"} replace />;
-  }
-
-  if (requiredKey && !sessionStorage.getItem(requiredKey)) {
-    return <Navigate to={userRole === "admin" ? "/recruiter/dashboard" : "/"} replace />;
-  }
+function ProtectedRoute({ children, role, requiredKey }) {
+  const { loading, profile } = useAuth();
+  if (loading) return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#06060f", color: "#a78bfa" }}>Verifying secure session…</div>;
+  if (!profile) return <Navigate to={role === "recruiter" ? "/recruiter" : "/login"} replace />;
+  if (role && profile.role !== role) return <Navigate to={profile.role === "recruiter" ? "/recruiter/dashboard" : "/"} replace />;
+  if (requiredKey && !sessionStorage.getItem(requiredKey)) return <Navigate to="/" replace />;
   return children;
 }
 
 export default function App() {
-  React.useEffect(() => {
-    const path = window.location.pathname;
-    const publicUrl = process.env.PUBLIC_URL || "/INTERVIEW-BOT";
-    if (path === "/" || path === "") {
-      window.location.replace(`${publicUrl}/`);
-    }
-  }, []);
-
   return (
     <BrowserRouter basename={process.env.PUBLIC_URL}>
       <ErrorBoundary>
         <Routes>
-          {/* Auth routes */}
-          <Route path="/login"    element={<Login portalType="candidate" />} />
+          <Route path="/login" element={<Login portalType="candidate" />} />
           <Route path="/recruiter" element={<Login portalType="employer" />} />
-
-          <Route path="/auth/callback"    element={<AuthCallback />} />
-          <Route path="/google-mock-auth" element={<GoogleMockAuth />} />
-
-          {/* Candidate Portal */}
-          <Route path="/" element={
-            <ProtectedRoute allowedRole="candidate">
-              <ErrorBoundary>
-                <Upload viewRole="candidate" />
-              </ErrorBoundary>
-            </ProtectedRoute>
-          } />
-
-          {/* Recruiter Portal */}
-          <Route path="/recruiter/dashboard" element={
-            <ProtectedRoute allowedRole="admin">
-              <ErrorBoundary>
-                <Upload viewRole="admin" />
-              </ErrorBoundary>
-            </ProtectedRoute>
-          } />
-
-          {/* Candidate proctored assessment */}
-          <Route path="/interview" element={
-            <ProtectedRoute requiredKey="resumeText" allowedRole="candidate">
-              <ErrorBoundary>
-                <Interview />
-              </ErrorBoundary>
-            </ProtectedRoute>
-          } />
-
-          {/* Candidate score report */}
-          <Route path="/results" element={
-            <ProtectedRoute requiredKey="interviewResults" allowedRole="candidate">
-              <ErrorBoundary>
-                <Results />
-              </ErrorBoundary>
-            </ProtectedRoute>
-          } />
-
-          {/* Assessment History — protected, candidate only */}
-          <Route path="/history" element={
-            <ProtectedRoute allowedRole="candidate">
-              <ErrorBoundary>
-                <History />
-              </ErrorBoundary>
-            </ProtectedRoute>
-          } />
-
+          <Route path="/" element={<ProtectedRoute role="candidate"><Upload viewRole="candidate" /></ProtectedRoute>} />
+          <Route path="/recruiter/dashboard" element={<ProtectedRoute role="recruiter"><RecruiterDashboard /></ProtectedRoute>} />
+          <Route path="/interview" element={<ProtectedRoute role="candidate" requiredKey="mockSessionId"><Interview /></ProtectedRoute>} />
+          <Route path="/results" element={<ProtectedRoute role="candidate" requiredKey="interviewResults"><Results /></ProtectedRoute>} />
+          <Route path="/history" element={<ProtectedRoute role="candidate"><History /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ErrorBoundary>

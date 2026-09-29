@@ -7,6 +7,37 @@
 
 TrustInterview AI is an enterprise-grade placement assessment platform tailored for RVCE Bengaluru Placements. It validates candidate claims, coordinates recruitment campaigns, routes AI interviewer personalities, and actively monitors compliance using a web-based proctoring shield.
 
+## Production stack
+
+The production path uses Firebase Google authentication, PostgreSQL, Redis/BullMQ, two stateless Express API instances, a background question worker, and Nginx least-connections load balancing. Candidate authorization is enforced by the API and accepts only verified accounts whose domain is exactly `rvce.edu.in`; recruiter access requires a Firebase custom claim.
+
+1. Create a Firebase web application, enable the Google provider, add the deployment hostname to Authorized Domains, and create a service account for the backend.
+2. Copy `.env.production.example` to `.env` and replace every placeholder. Generate `RESUME_ENCRYPTION_KEY` with a cryptographically secure 32-byte value encoded as Base64.
+3. Start the stack with `docker compose up --build -d`. The one-shot `migrate` and `seed` services initialize PostgreSQL before the APIs start.
+4. Create the recruiter as a Firebase user, then provision the role and company claim:
+
+   ```bash
+   docker compose run --rm api1 npm run provision:recruiter -- recruiter@example.com "Example Company"
+   ```
+
+   The recruiter must sign out and back in after provisioning so Firebase refreshes the ID token.
+
+Operational endpoints:
+
+- `GET /api/health/live` reports process liveness and the serving instance.
+- `GET /api/health/ready` checks PostgreSQL and Redis connectivity.
+- `GET /api/recruiter/jobs/failed` exposes failed background jobs to an authenticated recruiter.
+
+The uploaded PDF is processed from memory and discarded. Extracted text is encrypted with AES-256-GCM in Redis for no more than 24 hours and deleted immediately when the mock interview completes. PostgreSQL stores the ATS report, generated questions, and interview result, never the raw resume text.
+
+### Backup and rollout expectations
+
+- Back up the PostgreSQL volume with regular logical and provider-level snapshots; test restores before production launch.
+- Redis contains queues and short-lived resume material. AOF is enabled for queue recovery, but Redis is not the source of record for reports.
+- Terminate TLS at the deployment edge, expose only the Nginx service, rotate service-account/database/encryption secrets, and retain the old encryption key until all 24-hour resume entries have expired.
+- Run `npm test` in `backend`, `npm run build` in `frontend`, and `docker compose config` before each rollout. Deploy API replicas and the worker together when queue payloads or database migrations change.
+- With the stack running, execute `k6 run -e BASE_URL=https://your-host loadtest/k6.js`. Treat the included thresholds as an initial regression baseline and replace them with measured service-level objectives before launch.
+
 ---
 
 ## 🔒 Access Portals & Roles
@@ -55,17 +86,20 @@ Create a `.env` file in the `backend/` directory:
 ```env
 PORT=5001
 FRONTEND_URL=http://localhost:3000
-OPENAI_API_KEY=your_openai_api_key
+DATABASE_URL=postgres://trustinterview:password@localhost:5432/trustinterview
+REDIS_URL=redis://:password@localhost:6379
+FIREBASE_PROJECT_ID=your_firebase_project
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
+RESUME_ENCRYPTION_KEY=base64_encoded_32_byte_key
 GEMINI_API_KEY=your_gemini_api_key
-ZTA_ENABLED=true
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_CALLBACK_URL=http://localhost:5001/api/auth/google/callback
 ```
 
-Start the Node.js API:
+Run migrations and start the API plus background worker:
 ```bash
+npm run migrate
+npm run seed
 npm start
+npm run worker
 ```
 
 ### 3. Frontend Setup
@@ -75,6 +109,8 @@ cd ../frontend
 npm install
 npm start
 ```
+
+The frontend requires `REACT_APP_FIREBASE_API_KEY`, `REACT_APP_FIREBASE_AUTH_DOMAIN`, `REACT_APP_FIREBASE_PROJECT_ID`, and `REACT_APP_FIREBASE_APP_ID`. These identify the Firebase web application; privileged service-account credentials must never be placed in the frontend.
 
 The app will compile and automatically open [http://localhost:3000](http://localhost:3000) (Candidate Login) and [http://localhost:3000/recruiter](http://localhost:3000/recruiter) (Recruiter Login).
 

@@ -1,6 +1,8 @@
 import ZTAStatusDashboard from "../components/ZTAStatusDashboard";
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { authFetch } from "../api";
+import { useAuth } from "../AuthContext";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5001";
 
@@ -130,6 +132,8 @@ for (let i = 0; i < 45; i++) {
 
 export default function Upload({ viewRole }) {
   const navigate  = useNavigate();
+  const { logout } = useAuth();
+  const role = viewRole || sessionStorage.getItem("ztaRole") || "candidate";
   const inputRef  = useRef();
 
   const [file,          setFile]          = useState(null);
@@ -180,6 +184,8 @@ export default function Upload({ viewRole }) {
   const [eligibilityLogs,  setEligibilityLogs]  = useState([]);
   const [gapAnalysis,      setGapAnalysis]      = useState(null);
   const [loadingGap,       setLoadingGap]       = useState(false);
+  const [atsTargets,       setAtsTargets]       = useState({ roles: [], companyRoles: [] });
+  const [selectedTargetKey,setSelectedTargetKey]= useState("role:software-engineer");
   const [activePrepTopic,  setActivePrepTopic]  = useState(null);
 
   // Multi-LLM, Hallucination Scanners & Email Alerts
@@ -242,7 +248,7 @@ export default function Upload({ viewRole }) {
   async function handleResetIPBlock() {
     setUnblockMessage("Resetting...");
     try {
-      const res = await fetch(`${API}/api/zta-status/reset`, { method: "POST" });
+      const res = await authFetch(`${API}/api/zta-status/reset`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
         setUnblockMessage("Candidate IP successfully unblocked!");
@@ -259,12 +265,11 @@ export default function Upload({ viewRole }) {
 
   const handleSelectCandidate = (name, email) => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const logMsg = `[${time}] 📨 BROADCAST SENT: Candidate "${name}" (${email}) selected for next round. Placement invitation broadcasted.`;
+    const logMsg = `[${time}] ðŸ“¨ BROADCAST SENT: Candidate "${name}" (${email}) selected for next round. Placement invitation broadcasted.`;
     setNotificationLogs(prev => [logMsg, ...prev]);
     alert(`Placement selection broadcast sent to: ${name} (${email})`);
   };
 
-  const role = viewRole || sessionStorage.getItem("ztaRole") || "candidate";
   const candScoreAvg = (cand) => cand.avgScore || cand.bestScore || 0;
   const [leaderboard, setLeaderboard] = useState([]);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
@@ -277,7 +282,7 @@ export default function Upload({ viewRole }) {
                    sessionStorage.getItem("companyName") ||
                    sessionStorage.getItem("recruiterCompany") ||
                    "General";
-      const res = await fetch(`${API}/api/interview/leaderboard?company=${encodeURIComponent(comp)}`);
+      const res = await authFetch(`${API}/api/interview/leaderboard?company=${encodeURIComponent(comp)}`);
       const data = await res.json();
       if (data.success) {
         setLeaderboard(data.leaderboard || []);
@@ -294,7 +299,7 @@ export default function Upload({ viewRole }) {
 
   async function fetchCompanySettings() {
     try {
-      const res = await fetch(`${API}/api/interview/company-settings`);
+      const res = await authFetch(`${API}/api/interview/company-settings`);
       const data = await res.json();
       if (data.success && data.settings) {
         setCompanySettings(data.settings);
@@ -318,21 +323,21 @@ export default function Upload({ viewRole }) {
     const comp = recruiterCompany || sessionStorage.getItem("recruiterCompany") || "General";
     setSaveStatus("Saving...");
     try {
-      const res = await fetch(`${API}/api/interview/company-settings`, {
+      const res = await authFetch(`${API}/api/interview/company-settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company: comp, minCgpa: parseFloat(minCgpa) })
       });
       const data = await res.json();
       if (data.success) {
-        setSaveStatus("✓ Saved!");
+        setSaveStatus("âœ“ Saved!");
         fetchCompanySettings();
         setTimeout(() => setSaveStatus(""), 3000);
       } else {
-        setSaveStatus("❌ Error");
+        setSaveStatus("âŒ Error");
       }
     } catch (err) {
-      setSaveStatus("❌ Error");
+      setSaveStatus("âŒ Error");
     }
   }
 
@@ -351,7 +356,7 @@ export default function Upload({ viewRole }) {
     const email = sessionStorage.getItem("candidateEmail") || "anonymous@rvce.edu.in";
     const company = selectedCompanyData ? selectedCompanyData.name : "General";
     try {
-      const res = await fetch(`${API}/api/interview/tickets`, {
+      const res = await authFetch(`${API}/api/interview/tickets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ category: ticketCategory, subject: ticketSubject.trim(), description: ticketDescription.trim(), email, company })
@@ -409,7 +414,7 @@ export default function Upload({ viewRole }) {
 
   async function fetchTickets() {
     try {
-      const res = await fetch(`${API}/api/interview/tickets`);
+      const res = await authFetch(`${API}/api/interview/tickets`);
       const data = await res.json();
       if (data.success && data.tickets) {
         setHelpTickets(data.tickets);
@@ -421,7 +426,7 @@ export default function Upload({ viewRole }) {
 
   async function handleResolveTicket(ticketId) {
     try {
-      const res = await fetch(`${API}/api/interview/tickets/resolve`, {
+      const res = await authFetch(`${API}/api/interview/tickets/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: ticketId })
@@ -450,7 +455,7 @@ export default function Upload({ viewRole }) {
   React.useEffect(() => {
     async function checkBlocked() {
       try {
-        const res = await fetch(`${API}/api/zta-status`);
+        const res = await authFetch(`${API}/api/zta-status`);
         const data = await res.json();
         if (data.fraudAlert) {
           setIsBlocked(true);
@@ -491,7 +496,7 @@ export default function Upload({ viewRole }) {
 
   async function triggerNotificationAlert(companyName, minCgpaVal, pyq, role) {
     try {
-      const res = await fetch(`${API}/api/interview/notify-students`, {
+      const res = await authFetch(`${API}/api/interview/notify-students`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companyName, minCgpa: minCgpaVal, selectedPYQ: pyq, jobRole: role }),
@@ -521,6 +526,77 @@ export default function Upload({ viewRole }) {
     if (f) handleFile(f);
   }
 
+  useEffect(() => {
+    if (role !== "candidate") return;
+    authFetch(`${API}/api/targets`)
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || "Failed to load ATS targets");
+        setAtsTargets({ roles: data.roles || [], companyRoles: data.companyRoles || [] });
+      })
+      .catch((targetError) => console.warn(targetError.message));
+  }, [role]);
+
+  async function handleProductionSubmit() {
+    if (validateFile(file)) { setError(validateFile(file)); return; }
+    if (!jobRole.trim()) { setError("Please choose a target role."); return; }
+    if (!candidateName.trim()) { setError("Please enter your name."); return; }
+    const [targetType, targetId] = selectedTargetKey.split(":");
+    if (!targetType || !targetId) { setError("Please choose a valid ATS target."); return; }
+
+    setError("");
+    setStatus("uploading");
+    setEligibilityCheck("checking");
+    setEligibilityLogs(["[ATS] Securely extracting resume text…", "[ATS] Calculating deterministic score…"]);
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+      formData.append("targetType", targetType);
+      formData.append("targetId", targetId);
+      const response = await authFetch(`${API}/api/resumes`, { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || "Resume processing failed.");
+
+      const report = data.atsReport;
+      const sessionId = data.session.id;
+      setGapAnalysis({
+        readinessScore: Math.round(report.overallScore),
+        strengths: report.matchedCriteria?.length ? report.matchedCriteria.map((item) => `Matched: ${item}`) : ["No target criteria were confidently matched."],
+        gaps: report.missingCriteria?.length ? report.missingCriteria.map((item) => `Missing or unclear: ${item}`) : ["No major criteria gaps detected."],
+        recommendations: report.advice?.length ? report.advice : ["AI advice is being prepared with your interview questions."],
+        breakdown: report.breakdown,
+        scoringVersion: report.scoringVersion,
+      });
+      setEligibilityCheck("passed");
+      setEligibilityLogs((logs) => [...logs, `[ATS] Score ${report.overallScore}/100 (${report.scoringVersion})`, "[QUEUE] Generating grounded mock-interview questions…"]);
+      setStatus("generating");
+
+      let questions = null;
+      for (let attempt = 0; attempt < 45; attempt += 1) {
+        const questionResponse = await authFetch(`${API}/api/mock-sessions/${sessionId}/questions`);
+        const questionData = await questionResponse.json();
+        if (questionResponse.ok && questionData.ready) { questions = questionData.questions; break; }
+        if (questionResponse.status !== 202) throw new Error(questionData.error?.message || "Question generation failed.");
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      if (!questions) throw new Error("Question generation is still processing. Please try again shortly.");
+
+      sessionStorage.setItem("mockSessionId", sessionId);
+      sessionStorage.setItem("jobRole", jobRole.trim());
+      sessionStorage.setItem("candidateName", candidateName.trim());
+      sessionStorage.setItem("questions", JSON.stringify(questions));
+      sessionStorage.setItem("companyName", targetType === "company_role" ? (selectedCompanyData?.name || "Company role") : "Role-specific mock");
+      sessionStorage.setItem("interviewType", "mock");
+      sessionStorage.removeItem("resumeText");
+      setStatus("done");
+      navigate("/interview");
+    } catch (submitError) {
+      setError(submitError.message || "Something went wrong. Please try again.");
+      setStatus("idle");
+      setEligibilityCheck("failed");
+    }
+  }
+
   async function handleSubmit() {
     if (validateFile(file)) { setError(validateFile(file)); return; }
     if (!jobRole.trim())     { setError("Please enter the job role."); return; }
@@ -530,7 +606,7 @@ export default function Upload({ viewRole }) {
 
     try {
       setStatus("connecting");
-      const sessionRes = await fetch(`${API}/api/auth/session`, {
+      const sessionRes = await authFetch(`${API}/api/auth/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" }
       });
@@ -541,7 +617,7 @@ export default function Upload({ viewRole }) {
       const formData = new FormData();
       formData.append("resume", file);
 
-      const uploadRes = await fetch(`${API}/api/resume/upload`, {
+      const uploadRes = await authFetch(`${API}/api/resume/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -549,12 +625,12 @@ export default function Upload({ viewRole }) {
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error || "Upload failed");
 
-      // ── ZTA-L2 / L9: Validate name & role before proceeding ──────────────
+      // â”€â”€ ZTA-L2 / L9: Validate name & role before proceeding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       setStatus("connecting");
       setEligibilityLogs(["[ZTA-L2] Verifying candidate identity against resume...", "[ZTA-L9] Checking role relevance..."]);
       setEligibilityCheck("checking");
 
-      const validateRes = await fetch(`${API}/api/resume/validate`, {
+      const validateRes = await authFetch(`${API}/api/resume/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -570,13 +646,13 @@ export default function Upload({ viewRole }) {
         if (!validateData.nameMatch) {
           lines.push(
             validateData.extractedName
-              ? `⚠️ NAME MISMATCH — Resume belongs to: "${validateData.extractedName}"\n   You entered: "${candidateName.trim()}"\n   Please upload YOUR OWN resume, or fix your name.`
-              : `⚠️ NAME NOT FOUND — Could not detect a name in your resume. Upload a proper text-based resume.`
+              ? `âš ï¸ NAME MISMATCH â€” Resume belongs to: "${validateData.extractedName}"\n   You entered: "${candidateName.trim()}"\n   Please upload YOUR OWN resume, or fix your name.`
+              : `âš ï¸ NAME NOT FOUND â€” Could not detect a name in your resume. Upload a proper text-based resume.`
           );
         }
         if (!validateData.roleMatch) {
           lines.push(
-            `⚠️ ROLE MISMATCH — No evidence of "${jobRole.trim()}" skills in your resume.\n   Found keywords: ${validateData.roleKeywordsFound?.join(", ") || "none"}.\n   Please apply for a role that matches your background.`
+            `âš ï¸ ROLE MISMATCH â€” No evidence of "${jobRole.trim()}" skills in your resume.\n   Found keywords: ${validateData.roleKeywordsFound?.join(", ") || "none"}.\n   Please apply for a role that matches your background.`
           );
         }
         setEligibilityCheck("failed");
@@ -586,13 +662,13 @@ export default function Upload({ viewRole }) {
 
       setEligibilityLogs(prev => [
         ...prev,
-        `[ZTA-L2] ✓ Name verified: "${validateData.extractedName || candidateName}" (similarity: ${(validateData.nameSimilarity * 100).toFixed(0)}%)`,
-        `[ZTA-L9] ✓ Role relevance confirmed: ${validateData.roleKeywordsFound?.length} keywords found`,
+        `[ZTA-L2] âœ“ Name verified: "${validateData.extractedName || candidateName}" (similarity: ${(validateData.nameSimilarity * 100).toFixed(0)}%)`,
+        `[ZTA-L9] âœ“ Role relevance confirmed: ${validateData.roleKeywordsFound?.length} keywords found`,
       ]);
 
-      // ── AI CV Gap Analysis (Asynchronous, non-blocking) ──────────────────
+      // â”€â”€ AI CV Gap Analysis (Asynchronous, non-blocking) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       setLoadingGap(true);
-      fetch(`${API}/api/resume/gap-analysis`, {
+      authFetch(`${API}/api/resume/gap-analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -666,7 +742,7 @@ export default function Upload({ viewRole }) {
 
       const candidateEmail = sessionStorage.getItem("candidateEmail") || "";
       setStatus("generating");
-      const qRes = await fetch(`${API}/api/interview/questions`, {
+      const qRes = await authFetch(`${API}/api/interview/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -734,7 +810,7 @@ export default function Upload({ viewRole }) {
                   className="ghost-btn"
                   style={{ padding: "4px 10px", fontSize: "11px", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.2)", borderRadius: "10px" }}
                 >
-                  ← Back to Campaigns
+                  â† Back to Campaigns
                 </button>
                 <span style={{ fontSize: "12px", fontWeight: 800, color: "#7c3aed", background: "rgba(139,92,246,0.1)", padding: "2px 8px", borderRadius: "6px" }}>
                   {selectedCompanyData ? selectedCompanyData.name.toUpperCase() : "GENERAL"}
@@ -749,7 +825,7 @@ export default function Upload({ viewRole }) {
               disabled={loadingLeaderboard}
               style={{ padding: "8px 16px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
             >
-              {loadingLeaderboard ? "Refreshing..." : "⟳ Refresh Roster"}
+              {loadingLeaderboard ? "Refreshing..." : "âŸ³ Refresh Roster"}
             </button>
           </div>
 
@@ -798,23 +874,23 @@ export default function Upload({ viewRole }) {
                       const bestScoreNum = parseFloat(cand.bestScore || 0);
                       
                       // Selection Status mapping
-                      let verdictLabel = "❌ ELIMINATED";
+                      let verdictLabel = "âŒ ELIMINATED";
                       let verdictColor = "#f87171";
                       let verdictBg = "rgba(239, 68, 68, 0.1)";
                       let verdictBorder = "rgba(239, 68, 68, 0.2)";
                       
                       if (cand.totalSessions === 0) {
-                        verdictLabel = "📋 NO ASSESSMENT";
+                        verdictLabel = "ðŸ“‹ NO ASSESSMENT";
                         verdictColor = "#9ca3af";
                         verdictBg = "rgba(156, 163, 175, 0.1)";
                         verdictBorder = "rgba(156, 163, 175, 0.2)";
                       } else if (avgScoreNum >= 7.0) {
-                        verdictLabel = "✓ SELECTED (Next Round)";
+                        verdictLabel = "âœ“ SELECTED (Next Round)";
                         verdictColor = "#34d399";
                         verdictBg = "rgba(52, 211, 153, 0.1)";
                         verdictBorder = "rgba(52, 211, 153, 0.2)";
                       } else if (avgScoreNum >= 5.0) {
-                        verdictLabel = "⚠️ UNDER REVIEW";
+                        verdictLabel = "âš ï¸ UNDER REVIEW";
                         verdictColor = "#fbbf24";
                         verdictBg = "rgba(251, 191, 36, 0.1)";
                         verdictBorder = "rgba(251, 191, 36, 0.2)";
@@ -843,10 +919,10 @@ export default function Upload({ viewRole }) {
                           </td>
                           <td style={{ padding: "14px 12px", color: "#d4d4f0" }}>{cand.totalSessions}</td>
                           <td style={{ padding: "14px 12px", fontWeight: 700, color: cand.totalSessions === 0 ? "#6b6b90" : (avgScoreNum >= 7.0 ? "#34d399" : avgScoreNum >= 5.0 ? "#f59e0b" : "#ef4444") }}>
-                            {cand.totalSessions === 0 ? "—" : `${avgScoreNum.toFixed(1)} / 10 (${(avgScoreNum * 10).toFixed(0)}%)`}
+                            {cand.totalSessions === 0 ? "â€”" : `${avgScoreNum.toFixed(1)} / 10 (${(avgScoreNum * 10).toFixed(0)}%)`}
                           </td>
                           <td style={{ padding: "14px 12px", fontWeight: 800, color: cand.totalSessions === 0 ? "#6b6b90" : "#a78bfa" }}>
-                            {cand.totalSessions === 0 ? "—" : `${bestScoreNum.toFixed(1)} / 10 (${(bestScoreNum * 10).toFixed(0)}%)`}
+                            {cand.totalSessions === 0 ? "â€”" : `${bestScoreNum.toFixed(1)} / 10 (${(bestScoreNum * 10).toFixed(0)}%)`}
                           </td>
                           <td style={{ padding: "14px 12px" }}>
                             <span style={{
@@ -868,7 +944,7 @@ export default function Upload({ viewRole }) {
                               border: cand.totalSessions === 0 ? "1px solid rgba(156,163,175,0.15)" : (isCandBlocked ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(16,185,129,0.2)")
                             }}>
                               <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: cand.totalSessions === 0 ? "#6b6b90" : (isCandBlocked ? "#ef4444" : "#10b981") }} />
-                              {cand.totalSessions === 0 ? "PENDING" : (isCandBlocked ? "VERIFICATION FAILED" : "✓ ZTA SECURED")}
+                              {cand.totalSessions === 0 ? "PENDING" : (isCandBlocked ? "VERIFICATION FAILED" : "âœ“ ZTA SECURED")}
                             </span>
                           </td>
                           <td style={{ padding: "14px 12px", textAlign: "right" }}>
@@ -918,7 +994,7 @@ export default function Upload({ viewRole }) {
         <div className="glass-card" style={{ padding: "28px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px", marginTop: "24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
             <div>
-              <h3 style={{ color: "#f0f0ff", fontSize: "17px", fontWeight: 800, fontFamily: "var(--font-headings)" }}>🎫 Support Tickets Queue</h3>
+              <h3 style={{ color: "#f0f0ff", fontSize: "17px", fontWeight: 800, fontFamily: "var(--font-headings)" }}>ðŸŽ« Support Tickets Queue</h3>
               <p style={{ color: "#6b6b90", fontSize: "12.5px", marginTop: "2px" }}>Manage, review, and resolve student-submitted queries and eligibility appeals.</p>
             </div>
             <button
@@ -926,7 +1002,7 @@ export default function Upload({ viewRole }) {
               className="ghost-btn"
               style={{ padding: "6px 12px", fontSize: "11px" }}
             >
-              ⟳ Sync Tickets
+              âŸ³ Sync Tickets
             </button>
           </div>
 
@@ -967,7 +1043,7 @@ export default function Upload({ viewRole }) {
                         "{tkt.description}"
                       </div>
                       <div style={{ fontSize: "10.5px", color: "#6b6b90", marginTop: "4px" }}>
-                        Submitted by: <span style={{ color: "#38bdf8" }}>{tkt.email}</span> • ID: {tkt.id} • Date: {tkt.date}
+                        Submitted by: <span style={{ color: "#38bdf8" }}>{tkt.email}</span> â€¢ ID: {tkt.id} â€¢ Date: {tkt.date}
                       </div>
                     </div>
                     
@@ -1002,7 +1078,7 @@ export default function Upload({ viewRole }) {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#06060f", position: "relative" }}>
-      {/* ── Left Sidebar (Option A/C hybrid) ── */}
+      {/* â”€â”€ Left Sidebar (Option A/C hybrid) â”€â”€ */}
       <aside style={{
         width: "240px",
         background: "rgba(10, 11, 20, 0.95)",
@@ -1025,7 +1101,7 @@ export default function Upload({ viewRole }) {
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: "18px", boxShadow: "0 4px 14px rgba(124, 58, 237, 0.4)",
           }}>
-            🤖
+            ðŸ¤–
           </div>
           <div>
             <div style={{ fontSize: "15px", fontWeight: 900, color: "#f0f0ff", fontFamily: "var(--font-headings)", letterSpacing: "-0.02em" }}>
@@ -1040,14 +1116,14 @@ export default function Upload({ viewRole }) {
         {/* Navigation Items */}
         <nav style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
           {[
-            { label: "Dashboard", icon: "⊞", active: currentSidebarTab === "dashboard", onClick: () => { setCurrentSidebarTab("dashboard"); setSelectedCompanyData(null); setSelectedInterviewMode(null); setActivePrepTopic(null); } },
-            { label: "Prep Material", icon: "📖", active: currentSidebarTab === "prep", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("prep"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
-            { label: "Mock Interviews", icon: "🎙️", active: currentSidebarTab === "mock", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("mock"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
-            { label: "Calendar", icon: "📅", active: currentSidebarTab === "calendar", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("calendar"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
-            { label: "Account", icon: "👤", active: currentSidebarTab === "account", onClick: () => { setCurrentSidebarTab("account"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
-            { label: "Settings", icon: "⚙️", active: currentSidebarTab === "settings", showForAdminOnly: true, onClick: () => { setCurrentSidebarTab("settings"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
-            { label: "Help", icon: "❓", active: currentSidebarTab === "help", onClick: () => { setCurrentSidebarTab("help"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
-            { label: "Security Matrix", icon: "🛡️", showForAdminOnly: true, onClick: () => { setIsZtaDrawerOpen(true); setActivePrepTopic(null); } },
+            { label: "Dashboard", icon: "âŠž", active: currentSidebarTab === "dashboard", onClick: () => { setCurrentSidebarTab("dashboard"); setSelectedCompanyData(null); setSelectedInterviewMode(null); setActivePrepTopic(null); } },
+            { label: "Prep Material", icon: "ðŸ“–", active: currentSidebarTab === "prep", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("prep"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Mock Interviews", icon: "ðŸŽ™ï¸", active: currentSidebarTab === "mock", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("mock"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Calendar", icon: "ðŸ“…", active: currentSidebarTab === "calendar", showForCandidateOnly: true, onClick: () => { setCurrentSidebarTab("calendar"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Account", icon: "ðŸ‘¤", active: currentSidebarTab === "account", onClick: () => { setCurrentSidebarTab("account"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Settings", icon: "âš™ï¸", active: currentSidebarTab === "settings", showForAdminOnly: true, onClick: () => { setCurrentSidebarTab("settings"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Help", icon: "â“", active: currentSidebarTab === "help", onClick: () => { setCurrentSidebarTab("help"); setSelectedCompanyData(null); setActivePrepTopic(null); } },
+            { label: "Security Matrix", icon: "ðŸ›¡ï¸", showForAdminOnly: true, onClick: () => { setIsZtaDrawerOpen(true); setActivePrepTopic(null); } },
           ].filter(item => {
             if (item.showForCandidateOnly && role !== "candidate") return false;
             if (item.showForAdminOnly && role !== "admin") return false;
@@ -1144,7 +1220,7 @@ export default function Upload({ viewRole }) {
                 onFocus={e => { e.target.style.borderColor = "#7c3aed"; e.target.style.background = "rgba(139, 92, 246, 0.05)"; }}
                 onBlur={e => { e.target.style.borderColor = "rgba(139, 92, 246, 0.15)"; e.target.style.background = "rgba(255, 255, 255, 0.03)"; }}
               />
-              <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#4a4a6a", fontSize: "14px" }}>🔍</span>
+              <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#4a4a6a", fontSize: "14px" }}>ðŸ”</span>
             </div>
             <button 
               onClick={() => setVisibleCount(6)}
@@ -1185,7 +1261,7 @@ export default function Upload({ viewRole }) {
               }}
               title="Toggle theme"
             >
-              🌓
+              ðŸŒ“
             </button>
 
             {/* Assessment History link for candidates */}
@@ -1203,7 +1279,7 @@ export default function Upload({ viewRole }) {
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(139, 92, 246, 0.15)"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = "rgba(139, 92, 246, 0.08)"; }}
               >
-                📊 History
+                ðŸ“Š History
               </button>
             )}
 
@@ -1225,7 +1301,7 @@ export default function Upload({ viewRole }) {
             </div>
 
             <button
-              onClick={() => { sessionStorage.clear(); localStorage.removeItem("userGoogleAccount"); navigate(role === "admin" ? "/recruiter" : "/login"); }}
+              onClick={async () => { await logout(); navigate(role === "admin" ? "/recruiter" : "/login"); }}
               style={{
                 background: "rgba(239, 68, 68, 0.08)",
                 border: "1px solid rgba(239, 68, 68, 0.2)",
@@ -1262,7 +1338,7 @@ export default function Upload({ viewRole }) {
               
               <div>
                 <span className="rvce-badge">
-                  • ZERO TRUST ARCHITECTURE • RVCE BENGALURU PLACEMENTS CELL •
+                  â€¢ ZERO TRUST ARCHITECTURE â€¢ RVCE BENGALURU PLACEMENTS CELL â€¢
                 </span>
                 <h1 style={{ display: "flex", gap: "12px", alignItems: "baseline", margin: "10px 0 6px", position: "relative" }}>
                   <span className="gradient-title-main">
@@ -1378,7 +1454,7 @@ export default function Upload({ viewRole }) {
                   <div>
                     <div style={{ fontSize: "10px", color: "#4a4a6a", fontWeight: 700, letterSpacing: "0.05em" }}>ZTA ELIGIBILITY</div>
                     <div style={{ fontSize: "13px", fontWeight: 700, color: eligibilityCheck === "passed" ? "#34d399" : (eligibilityCheck === "failed" ? "#f87171" : "#f59e0b"), marginTop: "2px" }}>
-                      {eligibilityCheck === "passed" ? "✓ ELIGIBLE" : (eligibilityCheck === "failed" ? "✗ BLOCKED" : "PENDING UPLOAD")}
+                      {eligibilityCheck === "passed" ? "âœ“ ELIGIBLE" : (eligibilityCheck === "failed" ? "âœ— BLOCKED" : "PENDING UPLOAD")}
                     </div>
                   </div>
 
@@ -1392,7 +1468,7 @@ export default function Upload({ viewRole }) {
                     color: eligibilityCheck === "passed" ? "#34d399" : (eligibilityCheck === "failed" ? "#f87171" : "#f59e0b"),
                     animation: eligibilityCheck === "checking" ? "spin 1s linear infinite" : "none"
                   }}>
-                    {eligibilityCheck === "passed" ? "100%" : (eligibilityCheck === "failed" ? "0%" : "—")}
+                    {eligibilityCheck === "passed" ? "100%" : (eligibilityCheck === "failed" ? "0%" : "â€”")}
                   </div>
                 </div>
               </div>
@@ -1412,7 +1488,7 @@ export default function Upload({ viewRole }) {
               color: "#67e8f9"
             }}>
               <div style={{ fontWeight: 800, marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-                <span>📨</span> AUTOMATED RECRUITMENT EMAIL BROADCAST LOGS:
+                <span>ðŸ“¨</span> AUTOMATED RECRUITMENT EMAIL BROADCAST LOGS:
               </div>
               {notificationLogs.map((log, index) => (
                 <div key={index} style={{ margin: "4px 0" }}>{log}</div>
@@ -1557,20 +1633,20 @@ export default function Upload({ viewRole }) {
                           </div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <span style={{ fontSize: "11px", fontWeight: 700, color: "#34d399", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", padding: "3px 10px", borderRadius: "8px" }}>
-                              CGPA ≥ {getCompanyCutoff(comp.name).toFixed(1)}
+                              CGPA â‰¥ {getCompanyCutoff(comp.name).toFixed(1)}
                             </span>
-                            <span style={{ fontSize: "11px", color: "#4a4a6a" }}>📚 PYQ syllabus</span>
+                            <span style={{ fontSize: "11px", color: "#4a4a6a" }}>ðŸ“š PYQ syllabus</span>
                           </div>
                           
                           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
                             <span style={{ fontSize: "8.5px", fontWeight: 800, color: "#a78bfa", background: "rgba(124,58,237,0.06)", border: "1px solid rgba(139,92,246,0.18)", padding: "2px 6px", borderRadius: "6px", fontFamily: "var(--font-headings)" }}>
-                              🔒 ZTA ACTIVE
+                              ðŸ”’ ZTA ACTIVE
                             </span>
                             <span style={{ fontSize: "8.5px", fontWeight: 800, color: "#34d399", background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)", padding: "2px 6px", borderRadius: "6px", fontFamily: "var(--font-headings)" }}>
-                              🛡️ FAIR SHIELD
+                              ðŸ›¡ï¸ FAIR SHIELD
                             </span>
                             <span style={{ fontSize: "8.5px", fontWeight: 800, color: "#06b6d4", background: "rgba(6,182,212,0.06)", border: "1px solid rgba(6,182,212,0.18)", padding: "2px 6px", borderRadius: "6px", fontFamily: "var(--font-headings)" }}>
-                              👁️ FACT CHECK
+                              ðŸ‘ï¸ FACT CHECK
                             </span>
                           </div>
 
@@ -1592,7 +1668,7 @@ export default function Upload({ viewRole }) {
                               e.currentTarget.style.borderColor = theme.border;
                             }}
                           >
-                            Start Interview ➔
+                            Start Interview âž”
                           </button>
                         </div>
                       </div>
@@ -1640,7 +1716,7 @@ export default function Upload({ viewRole }) {
                     }}
                     className="glow-btn"
                   >
-                    ← Back to Placements Catalog
+                    â† Back to Placements Catalog
                   </button>
                   <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                     <span style={{ fontSize: "12px", color: "#10b981", background: "rgba(16, 185, 129, 0.1)", padding: "4px 12px", borderRadius: "20px", border: "1px solid rgba(16, 185, 129, 0.2)", fontWeight: 700 }}>
@@ -1672,14 +1748,14 @@ export default function Upload({ viewRole }) {
                         className="ghost-btn"
                         style={{ width: "100%", padding: "12px", fontSize: "13.5px" }}
                       >
-                        Enter Practice Sandbox →
+                        Enter Practice Sandbox â†’
                       </button>
                     </div>
 
                     {/* Official Drive */}
                     <div className="glass-card" style={{ padding: "28px", background: "rgba(16, 185, 129, 0.03)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "20px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                        <span className="badge badge-success">🏆 OFFICIAL DRIVE</span>
+                        <span className="badge badge-success">ðŸ† OFFICIAL DRIVE</span>
                         <span style={{ fontSize: "12px", color: "#34d399", fontWeight: 700 }}>1 Graded Attempt</span>
                       </div>
                       <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#ffffff", marginBottom: "8px", fontFamily: "var(--font-headings)" }}>
@@ -1694,7 +1770,7 @@ export default function Upload({ viewRole }) {
                         className="glow-btn"
                         style={{ width: "100%", padding: "12px", fontSize: "13.5px", background: "linear-gradient(135deg, #10b981, #059669)" }}
                       >
-                        Launch Graded Placement Round →
+                        Launch Graded Placement Round â†’
                       </button>
                     </div>
                   </div>
@@ -1704,7 +1780,7 @@ export default function Upload({ viewRole }) {
                       <div className="glass-card" style={styles.card}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                           <h2 style={styles.title}>
-                            {selectedInterviewMode === "actual" ? "🏆 Graded Placement Drive" : "🧪 Practice Mock Sandbox"}
+                            {selectedInterviewMode === "actual" ? "ðŸ† Graded Placement Drive" : "ðŸ§ª Practice Mock Sandbox"}
                           </h2>
                           <button
                             onClick={() => setSelectedInterviewMode(null)}
@@ -1728,6 +1804,26 @@ export default function Upload({ viewRole }) {
                               value={candidateName}
                               onChange={e => setCandidateName(e.target.value)}
                             />
+                          </div>
+                          <div>
+                            <label style={styles.label}>ATS TARGET MODE</label>
+                            <select
+                              className="input-field"
+                              value={selectedTargetKey}
+                              onChange={e => {
+                                setSelectedTargetKey(e.target.value);
+                                const [type, id] = e.target.value.split(":");
+                                const target = type === "role" ? atsTargets.roles.find(item => item.id === id) : atsTargets.companyRoles.find(item => item.id === id);
+                                if (target) setJobRole(target.title);
+                              }}
+                            >
+                              <optgroup label="Role-specific">
+                                {atsTargets.roles.map(target => <option key={`role:${target.id}`} value={`role:${target.id}`}>{target.title}</option>)}
+                              </optgroup>
+                              <optgroup label="Recruiter company roles">
+                                {atsTargets.companyRoles.map(target => <option key={`company_role:${target.id}`} value={`company_role:${target.id}`}>{target.company_name} — {target.title}</option>)}
+                              </optgroup>
+                            </select>
                           </div>
                           <div>
                             <label style={styles.label}>TARGET JOB ROLE</label>
@@ -1760,10 +1856,10 @@ export default function Upload({ viewRole }) {
                               />
                               {file ? (
                                 <div style={styles.fileReady}>
-                                  <span style={{ fontSize: "32px" }}>📄</span>
+                                  <span style={{ fontSize: "32px" }}>ðŸ“„</span>
                                   <div style={{ textAlign: "left" }}>
                                     <div style={styles.fileName}>{file.name}</div>
-                                    <div style={styles.fileMeta}>{(file.size / 1024).toFixed(1)} KB · PDF Document</div>
+                                    <div style={styles.fileMeta}>{(file.size / 1024).toFixed(1)} KB Â· PDF Document</div>
                                   </div>
                                   <button
                                     type="button"
@@ -1775,7 +1871,7 @@ export default function Upload({ viewRole }) {
                                 </div>
                               ) : (
                                 <div style={styles.dropPrompt}>
-                                  <span style={{ fontSize: "32px", marginBottom: "8px" }}>📤</span>
+                                  <span style={{ fontSize: "32px", marginBottom: "8px" }}>ðŸ“¤</span>
                                   <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--color-primary-light)" }}>
                                     Click to upload or drag resume here
                                   </span>
@@ -1798,15 +1894,15 @@ export default function Upload({ viewRole }) {
                                 ? "rgba(255, 255, 255, 0.05)" 
                                 : (selectedInterviewMode === "actual" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, var(--color-primary), #6366f1)")
                             }}
-                            onClick={handleSubmit}
+                            onClick={handleProductionSubmit}
                             disabled={busy || isBlocked || !file || !jobRole.trim() || !candidateName.trim() || eligibilityCheck === "failed"}
                           >
-                            {status === "connecting"  && "Establishing ZTA secure session token…"}
-                            {status === "uploading"   && "Uploading & parsing resume…"}
-                            {status === "checking_eligibility" && "Checking minimum CGPA cutoff…"}
-                            {status === "generating"  && "AI generating questions…"}
-                            {status === "idle"        && (selectedInterviewMode === "actual" ? "Start Official Placement Interview →" : "Start Practice Mock Interview →")}
-                            {status === "done"        && "ZTA Session Ready! Redirecting…"}
+                            {status === "connecting"  && "Establishing ZTA secure session tokenâ€¦"}
+                            {status === "uploading"   && "Uploading & parsing resumeâ€¦"}
+                            {status === "checking_eligibility" && "Checking minimum CGPA cutoffâ€¦"}
+                            {status === "generating"  && "AI generating questionsâ€¦"}
+                            {status === "idle"        && (selectedInterviewMode === "actual" ? "Start Official Placement Interview â†’" : "Start Practice Mock Interview â†’")}
+                            {status === "done"        && "ZTA Session Ready! Redirectingâ€¦"}
                           </button>
 
                           {busy && (
@@ -1822,7 +1918,7 @@ export default function Upload({ viewRole }) {
                                     {index === eligibilityLogs.length - 1 && eligibilityCheck !== "passed" ? (
                                       <span style={styles.miniSpinner} />
                                     ) : (
-                                      <span style={{ color: "#34d399", marginRight: "8px" }}>✓</span>
+                                      <span style={{ color: "#34d399", marginRight: "8px" }}>âœ“</span>
                                     )}
                                     {log}
                                   </div>
@@ -1839,7 +1935,7 @@ export default function Upload({ viewRole }) {
                       {(loadingGap || gapAnalysis) && (
                         <div className="glass-card fade-in-up" style={{ ...styles.card, borderColor: "rgba(139,92,246,0.3)", background: "rgba(10,10,22,0.85)" }}>
                           <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>
-                            🔍 AI CV Placement Readiness Audit
+                            ðŸ” AI CV Placement Readiness Audit
                           </h3>
                           {loadingGap ? (
                             <div style={{ textAlign: "center", padding: "20px 0", color: "#6b6b90", fontSize: "13px" }}>
@@ -1870,30 +1966,30 @@ export default function Upload({ viewRole }) {
 
                               {/* Strengths */}
                               <div style={{ marginBottom: "16px" }}>
-                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#10b981", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>✓ Primary Competencies</div>
+                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#10b981", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>âœ“ Primary Competencies</div>
                                 {(gapAnalysis.strengths || []).map((s, idx) => (
                                   <div key={idx} style={{ fontSize: "12px", color: "#cbd5e1", marginBottom: "6px", display: "flex", gap: "6px" }}>
-                                    <span style={{ color: "#10b981" }}>▸</span><span>{s}</span>
+                                    <span style={{ color: "#10b981" }}>â–¸</span><span>{s}</span>
                                   </div>
                                 ))}
                               </div>
 
                               {/* Gaps */}
                               <div style={{ marginBottom: "16px" }}>
-                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#f87171", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>⚠ Skill Gaps Detected</div>
+                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#f87171", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>âš  Skill Gaps Detected</div>
                                 {(gapAnalysis.gaps || []).map((g, idx) => (
                                   <div key={idx} style={{ fontSize: "12px", color: "#cbd5e1", marginBottom: "6px", display: "flex", gap: "6px" }}>
-                                    <span style={{ color: "#f87171" }}>▸</span><span>{g}</span>
+                                    <span style={{ color: "#f87171" }}>â–¸</span><span>{g}</span>
                                   </div>
                                 ))}
                               </div>
 
                               {/* Recommendations */}
                               <div>
-                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#a78bfa", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>🎯 Preparation Tips</div>
+                                <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#a78bfa", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "8px" }}>ðŸŽ¯ Preparation Tips</div>
                                 {(gapAnalysis.recommendations || []).map((r, idx) => (
                                   <div key={idx} style={{ fontSize: "12px", color: "#cbd5e1", marginBottom: "6px", display: "flex", gap: "6px" }}>
-                                    <span style={{ color: "#a78bfa" }}>▸</span><span>{r}</span>
+                                    <span style={{ color: "#a78bfa" }}>â–¸</span><span>{r}</span>
                                   </div>
                                 ))}
                               </div>
@@ -1904,12 +2000,12 @@ export default function Upload({ viewRole }) {
 
                       <div className="glass-card" style={styles.card}>
                         <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
-                          🛡️ ZTA Session Guard
+                          ðŸ›¡ï¸ ZTA Session Guard
                         </h3>
                         <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
-                          {role === "admin" && <div>• Minimum CGPA Cutoff: {getCompanyCutoff(selectedCompanyData.name).toFixed(1)}</div>}
-                          <div>• Live Camera Face Verification Enforced</div>
-                          <div>• L14 Non-repeating unique question seed active</div>
+                          {role === "admin" && <div>â€¢ Minimum CGPA Cutoff: {getCompanyCutoff(selectedCompanyData.name).toFixed(1)}</div>}
+                          <div>â€¢ Live Camera Face Verification Enforced</div>
+                          <div>â€¢ L14 Non-repeating unique question seed active</div>
                         </div>
                       </div>
                     </div>
@@ -1933,7 +2029,7 @@ export default function Upload({ viewRole }) {
                     onMouseEnter={e => e.currentTarget.style.borderColor = "#7c3aed"}
                     onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
                   >
-                    ←
+                    â†
                   </button>
                   <div>
                     <h2 style={{ fontSize: "22px", fontWeight: 900, color: "#ffffff", fontFamily: "var(--font-headings)", margin: 0 }}>
@@ -1951,7 +2047,7 @@ export default function Upload({ viewRole }) {
                   <div>
                     <div className="glass-card" style={{ padding: "24px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "16px", marginBottom: "24px" }}>
                       <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
-                        🎯 Core Preparation Syllabus
+                        ðŸŽ¯ Core Preparation Syllabus
                       </h3>
                       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                         {activePrepTopic.items.map((item, idx) => (
@@ -1986,7 +2082,7 @@ export default function Upload({ viewRole }) {
                         className="glow-btn"
                         style={{ padding: "12px 24px", fontSize: "13.5px", background: activePrepTopic.color, border: "none" }}
                       >
-                        Start Topic Assessment →
+                        Start Topic Assessment â†’
                       </button>
                     </div>
                   </div>
@@ -1996,13 +2092,13 @@ export default function Upload({ viewRole }) {
                     {/* Video Player Box */}
                     <div className="glass-card" style={{ padding: "24px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "16px" }}>
                       <h3 style={{ fontSize: "15px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
-                        🎬 Recommended Cheat Sheet Video
+                        ðŸŽ¬ Recommended Cheat Sheet Video
                       </h3>
                       {activePrepTopic.videoLinks.map((vid, idx) => (
                         <div key={idx} style={{ background: "rgba(0,0,0,0.2)", padding: "16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.04)", textAlign: "center" }}>
                           {/* Simulated Video Thumbnail overlay */}
                           <div style={{ position: "relative", width: "100%", height: "140px", background: "#0c0c16", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "14px", overflow: "hidden" }}>
-                            <div style={{ position: "absolute", width: "50px", height: "50px", borderRadius: "50%", background: activePrepTopic.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", color: "#fff", cursor: "pointer", boxShadow: "0 4px 14px rgba(124,58,237,0.3)" }}>▶</div>
+                            <div style={{ position: "absolute", width: "50px", height: "50px", borderRadius: "50%", background: activePrepTopic.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", color: "#fff", cursor: "pointer", boxShadow: "0 4px 14px rgba(124,58,237,0.3)" }}>â–¶</div>
                             <span style={{ fontSize: "12px", color: "#4a4a6a", marginTop: "60px" }}>YouTube Lecture Integration</span>
                           </div>
                           <a
@@ -2020,7 +2116,7 @@ export default function Upload({ viewRole }) {
                     {/* Frequently Asked Materials */}
                     <div className="glass-card" style={{ padding: "24px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "16px" }}>
                       <h3 style={{ fontSize: "15px", fontWeight: 800, color: "#ffffff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
-                        📖 Frequently Asked Study Materials
+                        ðŸ“– Frequently Asked Study Materials
                       </h3>
                       {activePrepTopic.faqMaterials.map((mat, idx) => (
                         <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.01)", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.03)" }}>
@@ -2047,7 +2143,7 @@ export default function Upload({ viewRole }) {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
                   {[
                     {
-                      title: "💻 Data Structures & Algorithms",
+                      title: "ðŸ’» Data Structures & Algorithms",
                       items: ["Array & Hashing challenges", "Tree & Graph structures", "Dynamic Programming cheat sheets"],
                       progress: 65,
                       color: "#7c3aed",
@@ -2055,7 +2151,7 @@ export default function Upload({ viewRole }) {
                       faqMaterials: [{ label: "NeetCode 150 Sheet", url: "https://neetcode.io/practice" }]
                     },
                     {
-                      title: "🌐 System Design & Scalability",
+                      title: "ðŸŒ System Design & Scalability",
                       items: ["Load balancing & Caching", "Database partitioning", "Microservices architecture"],
                       progress: 40,
                       color: "#06b6d4",
@@ -2063,7 +2159,7 @@ export default function Upload({ viewRole }) {
                       faqMaterials: [{ label: "Donne Martin Primer", url: "https://github.com/donnemartin/system-design-primer" }]
                     },
                     {
-                      title: "🤖 AI / Machine Learning Fundamentals",
+                      title: "ðŸ¤– AI / Machine Learning Fundamentals",
                       items: ["Neural network training dynamics", "Transformer architectures & LLMs", "Evaluation metrics & Bias control"],
                       progress: 80,
                       color: "#10b981",
@@ -2071,7 +2167,7 @@ export default function Upload({ viewRole }) {
                       faqMaterials: [{ label: "Hugging Face NLP Course", url: "https://huggingface.co/learn/nlp-course" }]
                     },
                     {
-                      title: "🗣️ Behavioral & HR Interview Prep",
+                      title: "ðŸ—£ï¸ Behavioral & HR Interview Prep",
                       items: ["STAR method answer builder", "College project summaries", "Leadership situations"],
                       progress: 90,
                       color: "#f59e0b",
@@ -2112,7 +2208,7 @@ export default function Upload({ viewRole }) {
                           <div style={{ width: `${topic.progress}%`, height: "100%", background: topic.color, borderRadius: "2px" }} />
                         </div>
                         <div style={{ fontSize: "11px", color: topic.color, marginTop: "12px", textAlign: "right", fontWeight: 700 }}>
-                          Click Card to Learn →
+                          Click Card to Learn â†’
                         </div>
                       </div>
                     </div>
@@ -2126,6 +2222,26 @@ export default function Upload({ viewRole }) {
                 <div style={{ padding: "24px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px" }}>
                   <h4 style={{ color: "#f0f0ff", marginBottom: "16px" }}>Initialize New Practice Session</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    <div>
+                      <label style={styles.label}>ATS TARGET MODE</label>
+                      <select
+                        className="input-field"
+                        value={selectedTargetKey}
+                        onChange={e => {
+                          setSelectedTargetKey(e.target.value);
+                          const [type, id] = e.target.value.split(":");
+                          const target = type === "role" ? atsTargets.roles.find(item => item.id === id) : atsTargets.companyRoles.find(item => item.id === id);
+                          if (target) setJobRole(target.title);
+                        }}
+                      >
+                        <optgroup label="Role-specific">
+                          {atsTargets.roles.map(target => <option key={`role:${target.id}`} value={`role:${target.id}`}>{target.title}</option>)}
+                        </optgroup>
+                        <optgroup label="Recruiter company roles">
+                          {atsTargets.companyRoles.map(target => <option key={`company_role:${target.id}`} value={`company_role:${target.id}`}>{target.company_name} — {target.title}</option>)}
+                        </optgroup>
+                      </select>
+                    </div>
                     <div>
                       <label style={styles.label}>TARGET JOB ROLE</label>
                       <input
@@ -2149,15 +2265,15 @@ export default function Upload({ viewRole }) {
                         <input type="file" ref={inputRef} onChange={e => { const f = e.target.files[0]; if (f) setFile(f); }} style={{ display: "none" }} accept=".pdf" />
                         {file ? (
                           <div style={styles.fileReady}>
-                            <span style={{ fontSize: "24px" }}>📄</span>
+                            <span style={{ fontSize: "24px" }}>ðŸ“„</span>
                             <div style={{ textAlign: "left" }}>
                               <div style={styles.fileName}>{file.name}</div>
-                              <div style={styles.fileMeta}>{(file.size / 1024).toFixed(1)} KB · Ready to scan</div>
+                              <div style={styles.fileMeta}>{(file.size / 1024).toFixed(1)} KB Â· Ready to scan</div>
                             </div>
                           </div>
                         ) : (
                           <div style={styles.dropPrompt}>
-                            <span style={{ fontSize: "24px", marginBottom: "6px" }}>📤</span>
+                            <span style={{ fontSize: "24px", marginBottom: "6px" }}>ðŸ“¤</span>
                             <span style={{ fontSize: "13px", fontWeight: 700, color: "#c4b5fd" }}>Click or Drag PDF Resume here</span>
                           </div>
                         )}
@@ -2165,7 +2281,7 @@ export default function Upload({ viewRole }) {
                     </div>
                     <button
                       className="glow-btn"
-                      onClick={handleSubmit}
+                      onClick={handleProductionSubmit}
                       style={{ padding: "14px", fontSize: "14px" }}
                     >
                       Start Practice Mock Interview
@@ -2248,7 +2364,7 @@ export default function Upload({ viewRole }) {
                   <h4 style={{ color: "#f0f0ff", marginBottom: "16px" }}>{role === "admin" ? "Recruiter Campaigns Matrix" : "Assessment History"}</h4>
                   {role === "admin" ? (
                     <div style={{ padding: "20px", color: "#6b6b90", fontSize: "13.5px", lineHeight: 1.6 }}>
-                      🔒 You are actively logged in as a <strong>Recruiter & Coordinator</strong>. You have permissions to configure proctoring limits, toggle agent templates, audit candidate compliance, and reset security blocks.
+                      ðŸ”’ You are actively logged in as a <strong>Recruiter & Coordinator</strong>. You have permissions to configure proctoring limits, toggle agent templates, audit candidate compliance, and reset security blocks.
                     </div>
                   ) : profileHistory.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "32px 0", color: "#4a4a6a", fontSize: "13px" }}>
@@ -2285,7 +2401,7 @@ export default function Upload({ viewRole }) {
                 
                 {/* Preferences */}
                 <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>👤 Candidate Preferences</h4>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>ðŸ‘¤ Candidate Preferences</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span>Toggle email alerts</span>
@@ -2300,7 +2416,7 @@ export default function Upload({ viewRole }) {
 
                 {/* Recruiter & AI Personality */}
                 <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>🤖 Recruiter Controls & AI Agents</h4>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>ðŸ¤– Recruiter Controls & AI Agents</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     <div>
                       <label style={styles.label}>ACTIVE LLM MODEL CLUSTER</label>
@@ -2342,9 +2458,9 @@ export default function Upload({ viewRole }) {
                         onChange={e => setSelectedAgent(e.target.value)}
                         style={{ fontSize: "12px", padding: "8px 12px" }}
                       >
-                        <option value="skyy">Skyy — Conversational AI Interviewer</option>
-                        <option value="zeus">Zeus — Technical Insights Deep Diver</option>
-                        <option value="matt">Matt — High-empathy Feedback Agent</option>
+                        <option value="skyy">Skyy â€” Conversational AI Interviewer</option>
+                        <option value="zeus">Zeus â€” Technical Insights Deep Diver</option>
+                        <option value="matt">Matt â€” High-empathy Feedback Agent</option>
                       </select>
                     </div>
                   </div>
@@ -2352,7 +2468,7 @@ export default function Upload({ viewRole }) {
 
                 {/* Yoodli Speaking Insights */}
                 <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>🗣️ Yoodli Delivery Insights</h4>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>ðŸ—£ï¸ Yoodli Delivery Insights</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span>Track words-per-minute pace</span>
@@ -2371,7 +2487,7 @@ export default function Upload({ viewRole }) {
 
                 {/* Interviewer.ai Screening Weights */}
                 <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>🎯 ATS Screening Weightage</h4>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>ðŸŽ¯ ATS Screening Weightage</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     <div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#6b6b90", fontWeight: 700, marginBottom: "4px" }}>
@@ -2424,7 +2540,7 @@ export default function Upload({ viewRole }) {
 
                 {/* Proctor Security Rules */}
                 <div style={{ padding: "20px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>🛡️ Proctoring Security Shield</h4>
+                  <h4 style={{ color: "#f0f0ff", marginBottom: "4px", fontSize: "15px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>ðŸ›¡ï¸ Proctoring Security Shield</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", color: "#cbd5e1" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span>Enforce active screen sharing call</span>
@@ -2464,7 +2580,7 @@ export default function Upload({ viewRole }) {
               {/* LEFT COLUMN: AI ASSISTANT CHAT */}
               <div className="glass-card" style={{ padding: "24px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px", display: "flex", flexDirection: "column", height: "550px" }}>
                 <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff", marginBottom: "16px", fontFamily: "var(--font-headings)", display: "flex", alignItems: "center", gap: "8px" }}>
-                  🤖 Placement ZTA Support Agent
+                  ðŸ¤– Placement ZTA Support Agent
                 </h3>
                 
                 {/* Chat Messages Panel */}
@@ -2515,7 +2631,7 @@ export default function Upload({ viewRole }) {
                 {/* Submit Ticket Form */}
                 <div className="glass-card" style={{ padding: "24px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
                   <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff", marginBottom: "16px", fontFamily: "var(--font-headings)" }}>
-                    🎫 Submit Support Ticket
+                    ðŸŽ« Submit Support Ticket
                   </h3>
                   <form onSubmit={handleSubmitTicket} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     <div>
@@ -2564,7 +2680,7 @@ export default function Upload({ viewRole }) {
                 {/* Ticket History */}
                 <div className="glass-card" style={{ padding: "24px", background: "rgba(10,10,22,0.85)", border: "1px solid rgba(139, 92, 246, 0.15)", borderRadius: "20px" }}>
                   <h3 style={{ fontSize: "15px", fontWeight: 800, color: "#fff", marginBottom: "14px", fontFamily: "var(--font-headings)" }}>
-                    📋 My Support Tickets
+                    ðŸ“‹ My Support Tickets
                   </h3>
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "150px", overflowY: "auto" }}>
                     {(() => {
@@ -2577,7 +2693,7 @@ export default function Upload({ viewRole }) {
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: "10px" }}>
                           <div>
                             <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0" }}>{tkt.subject}</div>
-                            <div style={{ fontSize: "10.5px", color: "#6b6b90", marginTop: "2px" }}>{tkt.id} • {tkt.category} • {tkt.date}</div>
+                            <div style={{ fontSize: "10.5px", color: "#6b6b90", marginTop: "2px" }}>{tkt.id} â€¢ {tkt.category} â€¢ {tkt.date}</div>
                           </div>
                           <span style={{
                             fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px",
@@ -2618,7 +2734,7 @@ export default function Upload({ viewRole }) {
             }} className="fade-in-right">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "20px" }}>🛡️</span>
+                  <span style={{ fontSize: "20px" }}>ðŸ›¡ï¸</span>
                   <span style={{ fontSize: "15px", fontWeight: 800, color: "#fff", fontFamily: "var(--font-headings)" }}>
                     ZTA SECURITY AUDIT MATRIX
                   </span>
@@ -2626,7 +2742,7 @@ export default function Upload({ viewRole }) {
                 <button 
                   onClick={() => setIsZtaDrawerOpen(false)} 
                   style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "20px" }}
-                >✕</button>
+                >âœ•</button>
               </div>
               <ZTAStatusDashboard />
             </div>
@@ -2644,17 +2760,17 @@ export default function Upload({ viewRole }) {
             gap: "16px"
           }}>
             <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-              © 2026 RVCE Bangalore Campus Placement Cell. Zero Trust Sandbox enabled.
+              Â© 2026 RVCE Bangalore Campus Placement Cell. Zero Trust Sandbox enabled.
             </div>
             <div style={{ display: "flex", gap: "20px", fontSize: "12.5px" }}>
               <span style={{ color: recruiterCompany ? "#10b981" : "var(--text-muted)" }}>
-                🔒 <strong>Eligible Cutoff:</strong> {recruiterCompany ? `CGPA >= ${minCgpa}` : "Not Active"}
+                ðŸ”’ <strong>Eligible Cutoff:</strong> {recruiterCompany ? `CGPA >= ${minCgpa}` : "Not Active"}
               </span>
               <span style={{ color: recruiterCompany ? "#38bdf8" : "var(--text-muted)" }}>
-                📚 <strong>PYQs active:</strong> {recruiterCompany ? selectedPYQ : "None"}
+                ðŸ“š <strong>PYQs active:</strong> {recruiterCompany ? selectedPYQ : "None"}
               </span>
               <span style={{ color: "var(--text-muted)" }}>
-                🛠️ <strong>LLM:</strong> {selectedLLM.toUpperCase()}
+                ðŸ› ï¸ <strong>LLM:</strong> {selectedLLM.toUpperCase()}
               </span>
             </div>
           </footer>

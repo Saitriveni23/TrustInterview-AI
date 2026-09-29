@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { authFetch } from "../api";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5001";
 
@@ -27,7 +28,7 @@ export default function ZTAStatusDashboard() {
 
   async function fetchStatus() {
     try {
-      const res  = await fetch(`${API}/api/zta-status`);
+      const res  = await authFetch(`${API}/api/zta-status`);
       const data = await res.json();
       setStatus(data);
     } catch {
@@ -88,7 +89,7 @@ export default function ZTAStatusDashboard() {
           }}
           onClick={() => setActiveFilter("ALL")}
         >
-          ✕ Reset
+          âœ• Reset
         </button>
       </div>
 
@@ -159,7 +160,7 @@ export default function ZTAStatusDashboard() {
                     className={`card-icon ${isStarred ? "active" : ""}`}
                     onClick={(e) => toggleStar(l.id, e)}
                   >
-                    ★
+                    â˜…
                   </span>
                 </div>
 
@@ -168,11 +169,11 @@ export default function ZTAStatusDashboard() {
 
                 {/* Card Scope & Technology Details */}
                 <div className="card-detail" style={{ marginTop: "12px" }}>
-                  <span className="card-detail-icon">📍</span>
+                  <span className="card-detail-icon">ðŸ“</span>
                   <span>Scope: {meta.scope}</span>
                 </div>
                 <div className="card-detail">
-                  <span className="card-detail-icon">⚙️</span>
+                  <span className="card-detail-icon">âš™ï¸</span>
                   <span>Tech: {meta.tech}</span>
                 </div>
               </div>
@@ -220,7 +221,7 @@ export default function ZTAStatusDashboard() {
           }}
         >
           <div style={{ color: "#ef4444", fontWeight: "700", fontSize: "13px", marginBottom: "8px", fontFamily: "var(--font-headings)" }}>
-            🛑 SECURITY DISRUPTION - SYSTEM LOCK ACTIVE
+            ðŸ›‘ SECURITY DISRUPTION - SYSTEM LOCK ACTIVE
           </div>
           <p style={{ color: "#cbd5e1", fontSize: "12px", lineHeight: "1.5" }}>
             The SOAR Orchestrator triggered an automated IP block because the client signature failed security metrics. Device fingerprint alerts and SQL patterns were intercepted. All layer integrity scales dropped to 0%.

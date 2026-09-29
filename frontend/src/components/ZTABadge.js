@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { authFetch } from "../api";
 
 const BACKEND = process.env.REACT_APP_API_URL || "http://localhost:5001";
 
@@ -15,7 +16,7 @@ export default function ZTABadge({ compact = false, page = "" }) {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res  = await fetch(`${BACKEND}/api/zta-status`);
+        const res  = await authFetch(`${BACKEND}/api/zta-status`);
         const data = await res.json();
         setZtaData(data);
       } catch {
@@ -92,7 +93,7 @@ export default function ZTABadge({ compact = false, page = "" }) {
             boxShadow: "0 16px 40px rgba(0,0,0,0.8)",
           }} onClick={e => e.stopPropagation()}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
-              <span style={{ color:"#f0f6fc", fontSize:"12px", fontWeight:700 }}>🛡️ ZTA Layer Status</span>
+              <span style={{ color:"#f0f6fc", fontSize:"12px", fontWeight:700 }}>ðŸ›¡ï¸ ZTA Layer Status</span>
               {page && <span style={{ color:"#8b949e", fontSize:"10px" }}>Page: {page}</span>}
             </div>
             <div style={{ display:"flex", flexDirection:"column", gap:"5px" }}>
@@ -152,7 +153,7 @@ export default function ZTABadge({ compact = false, page = "" }) {
         fontSize: "16px",
         animation: isActive ? "ztaPulse 2s ease-in-out infinite" : "none",
       }}>
-        🛡️
+        ðŸ›¡ï¸
       </div>
       <div>
         <div style={{ color: badgeColor, fontSize:"12px", fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase" }}>
@@ -160,7 +161,7 @@ export default function ZTABadge({ compact = false, page = "" }) {
         </div>
         <div style={{ color:"#8b949e", fontSize:"11px", marginTop:"2px" }}>
           {layers.filter(l => l.status === "active").length} / {layers.length} layers active
-          {page && ` · ${page}`}
+          {page && ` Â· ${page}`}
         </div>
       </div>
     </div>

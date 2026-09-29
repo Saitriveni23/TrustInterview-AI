@@ -5,6 +5,7 @@ import CameraFeed  from "../components/CameraFeed";
 import TimerBar    from "../components/TimerBar";
 import ZTABadge   from "../components/ZTABadge";
 import { SkeletonCard, SkeletonBar } from "../components/SkeletonLoader";
+import { authFetch } from "../api";
 
 const BACKEND = process.env.REACT_APP_API_URL || "http://localhost:5001";
 
@@ -25,34 +26,34 @@ function ztaHeaders(extra = {}) {
 
 async function fetchZTAStatus() {
   try {
-    const res  = await fetch(`${BACKEND}/api/zta-status`);
+    const res  = await authFetch(`${BACKEND}/api/zta-status`);
     const data = await res.json();
     return data.ztaEnabled;
   } catch { return true; }
 }
 
 const ZTA_EVENTS_POOL = [
-  "L1-Identity: Bearer token validated ✓",
-  "L2-Device: Browser fingerprint verified ✓",
-  "L3-Network: CORS policy enforced ✓",
-  "L4-Payload: Input sanitization active ✓",
-  "L5-Data: Answer encrypted in-transit ✓",
-  "L6-Audit: Session events logged ✓",
-  "L7-SOAR: No anomalous patterns detected ✓",
-  "L8-Governance: XSS scan passed ✓",
-  "L9-Policy: Candidate scope verified ✓",
-  "L10-Edge: HSTS headers active ✓",
-  "L11-ThreatIntel: No malicious signatures ✓",
-  "L12-Bias: Question bias scan passed ✓",
-  "L13-Hallucination: Grounding verified ✓",
-  "L14-Uniqueness: No repeated questions ✓",
+  "L1-Identity: Bearer token validated âœ“",
+  "L2-Device: Browser fingerprint verified âœ“",
+  "L3-Network: CORS policy enforced âœ“",
+  "L4-Payload: Input sanitization active âœ“",
+  "L5-Data: Answer encrypted in-transit âœ“",
+  "L6-Audit: Session events logged âœ“",
+  "L7-SOAR: No anomalous patterns detected âœ“",
+  "L8-Governance: XSS scan passed âœ“",
+  "L9-Policy: Candidate scope verified âœ“",
+  "L10-Edge: HSTS headers active âœ“",
+  "L11-ThreatIntel: No malicious signatures âœ“",
+  "L12-Bias: Question bias scan passed âœ“",
+  "L13-Hallucination: Grounding verified âœ“",
+  "L14-Uniqueness: No repeated questions âœ“",
 ];
 
-// ── Countdown Ring Timer ─────────────────────────────────────────────────────
+// â”€â”€ Countdown Ring Timer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function CountdownRing({ timeLimit, onTimeout, resetKey }) {
   const [remaining, setRemaining] = React.useState(timeLimit);
   const R   = 45;
-  const CIRC = 2 * Math.PI * R; // ≈ 283
+  const CIRC = 2 * Math.PI * R; // â‰ˆ 283
 
   React.useEffect(() => {
     setRemaining(timeLimit);
@@ -89,7 +90,7 @@ function CountdownRing({ timeLimit, onTimeout, resetKey }) {
           {mins}:{secs}
         </div>
         <div style={{ fontSize: "10px", color: "#6b6b90", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginTop: "3px" }}>
-          {pct <= 0.25 ? "⚠ Time Critical" : "Time Remaining"}
+          {pct <= 0.25 ? "âš  Time Critical" : "Time Remaining"}
         </div>
       </div>
     </div>
@@ -373,7 +374,7 @@ export default function Interview() {
       setConsoleOutput("> Initializing compiler sandbox environment...\n> Running integration test cases...");
       setTimeout(() => {
         setRunningTests(false);
-        setConsoleOutput((prev) => prev + `\n\n[SUCCESS] Compilation complete.\n✓ Test Case 1: Input Match Passed\n✓ Test Case 2: Constraint Validation Passed\n✓ Test Case 3: Time Complexity Boundary Passed\n\nResult: 3/3 test cases passed.\nMemory Used: 12.4 MB\nExecution Time: 45ms`);
+        setConsoleOutput((prev) => prev + `\n\n[SUCCESS] Compilation complete.\nâœ“ Test Case 1: Input Match Passed\nâœ“ Test Case 2: Constraint Validation Passed\nâœ“ Test Case 3: Time Complexity Boundary Passed\n\nResult: 3/3 test cases passed.\nMemory Used: 12.4 MB\nExecution Time: 45ms`);
       }, 1500);
       return;
     }
@@ -423,7 +424,7 @@ export default function Interview() {
       await navigator.mediaDevices.getUserMedia({ audio: true });
       const recognition = new SpeechRecognition();
       recognition.continuous = true; recognition.interimResults = true; recognition.lang = "en-US";
-      recognition.onstart  = () => { setRecording(true); setTranscript("Listening — speak your answer..."); };
+      recognition.onstart  = () => { setRecording(true); setTranscript("Listening â€” speak your answer..."); };
       
       let silenceTimer = null;
       recognition.onresult = (event) => {
@@ -461,7 +462,7 @@ export default function Interview() {
   function handleTimeout() {
     window.speechSynthesis.cancel();
     if (recording) stopVoice();
-    handleSubmitAnswer(typedAnswer || transcript || "(No answer — time ran out)");
+    handleSubmitAnswer(typedAnswer || transcript || "(No answer â€” time ran out)");
   }
 
   async function handleSubmitAnswer(answerText) {
@@ -514,16 +515,15 @@ export default function Interview() {
 
   async function finishInterview(allAnswers) {
     setPhase("done");
+    const avg = allAnswers.length ? (allAnswers.reduce((s, a) => s + (a.score || 0), 0) / allAnswers.length) : 0;
     try {
-      const avg = allAnswers.length ? (allAnswers.reduce((s, a) => s + (a.score || 0), 0) / allAnswers.length) : 0;
-      await axios.post(`${BACKEND}/api/interview/record-score`, {
-        email: candidateEmail,
-        name: candidateName,
-        score: parseFloat(avg.toFixed(2)),
-        company: companyName || "General",
-        jobRole: jobRole || "AI Specialist",
-        interviewType: interviewType || "mock"
-      }, { headers: ztaHeaders({ "Content-Type": "application/json" }) });
+      const sessionId = sessionStorage.getItem("mockSessionId");
+      const response = await authFetch(`${BACKEND}/api/mock-sessions/${sessionId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interviewScore: parseFloat(avg.toFixed(2)), result: { answers: allAnswers } }),
+      });
+      if (!response.ok) throw new Error("Session completion was not persisted.");
     } catch (e) { console.warn("Score record failed:", e.message); }
 
     let report = null;
@@ -543,13 +543,13 @@ export default function Interview() {
   const q = questions[currentIdx];
   const progress = questions.length ? ((currentIdx) / questions.length) * 100 : 0;
 
-  // ── LOADING SCREEN ──────────────────────────────────────────────────────────────────
+  // â”€â”€ LOADING SCREEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (phase === "loading" || loading) return (
     <div style={{ minHeight:"100vh", background:"#06060f", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start", padding:"60px 24px 40px", fontFamily:"var(--font-body)", position:"relative", overflowY: "auto" }}>
       <div style={{ position: "absolute", width: "400px", height: "400px", background: "rgba(124,58,237,0.05)", borderRadius: "50%", filter: "blur(100px)", pointerEvents: "none", top: 0, left: "50%", transform: "translateX(-50%)" }} />
 
       <div style={{ textAlign:"center", maxWidth:"480px", width:"100%", zIndex: 1 }}>
-        <div style={{ fontSize:"52px", marginBottom:"20px", animation: "float 4s ease-in-out infinite" }}>🛡️</div>
+        <div style={{ fontSize:"52px", marginBottom:"20px", animation: "float 4s ease-in-out infinite" }}>ðŸ›¡ï¸</div>
         <h1 style={{ fontSize:"24px", fontWeight:900, color:"#f0f0ff", fontFamily:"var(--font-headings)", marginBottom:"8px" }}>
           Preparing Your Assessment
         </h1>
@@ -570,7 +570,7 @@ export default function Interview() {
               fontSize:"13px", fontWeight: i === loadingStep ? 700 : 500,
             }}>
               <span style={{ fontSize:"15px", width: "20px" }}>
-                {i < loadingStep ? "✓" : i === loadingStep ? "⟳" : "○"}
+                {i < loadingStep ? "âœ“" : i === loadingStep ? "âŸ³" : "â—‹"}
               </span>
               {step}
             </div>
@@ -595,17 +595,17 @@ export default function Interview() {
     </div>
   );
 
-  // ── ERROR SCREEN ───────────────────────────────────────────────────────────
+  // â”€â”€ ERROR SCREEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (phase === "error") return (
     <div style={{ minHeight:"100vh", background:"#06060f", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:"40px", position:"relative" }}>
-      <div style={{ fontSize:"56px", marginBottom:"20px" }}>⚠️</div>
+      <div style={{ fontSize:"56px", marginBottom:"20px" }}>âš ï¸</div>
       <h1 style={{ fontSize:"24px", fontWeight:900, color:"#f0f0ff", fontFamily:"var(--font-headings)", marginBottom:"8px" }}>Assessment Blocked</h1>
       <p style={{ color:"#f87171", fontSize:"14px", marginBottom:"28px", maxWidth:"440px", textAlign:"center", lineHeight:1.6, background: "rgba(239, 68, 68, 0.05)", padding: "16px", borderRadius: "12px", border: "1px solid rgba(239, 68, 68, 0.15)" }}>{error}</p>
-      <button onClick={() => navigate("/")} className="glow-btn">← Back to Placements Catalog</button>
+      <button onClick={() => navigate("/")} className="glow-btn">â† Back to Placements Catalog</button>
     </div>
   );
 
-  // ── INTRO SCREEN ───────────────────────────────────────────────────────────
+  // â”€â”€ INTRO SCREEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (phase === "intro") return (
     <div style={{ minHeight:"100vh", background:"#06060f", display:"flex", alignItems:"center", justifyContent:"center", padding:"40px", fontFamily:"var(--font-body)", position:"relative" }}>
       <div style={{ position: "absolute", top: "10%", left: "10%", width: "300px", height: "300px", background: "rgba(124, 58, 237, 0.04)", borderRadius: "50%", filter: "blur(100px)", pointerEvents: "none" }} />
@@ -617,7 +617,7 @@ export default function Interview() {
           <ZTABadge compact page="Interview Room" />
         </div>
 
-        <div style={{ fontSize:"64px", marginBottom:"16px" }}>🎯</div>
+        <div style={{ fontSize:"64px", marginBottom:"16px" }}>ðŸŽ¯</div>
         <h1 style={{ fontSize:"32px", fontWeight:900, color:"#f0f0ff", fontFamily:"var(--font-headings)", marginBottom:"8px", letterSpacing: "-0.02em" }}>
           Ready, {candidateName.split(" ")[0]}?
         </h1>
@@ -634,7 +634,7 @@ export default function Interview() {
           borderRadius:"16px", padding:"20px", marginBottom:"20px", textAlign:"left",
         }}>
           <div style={{ fontSize:"11px", fontWeight:900, letterSpacing:"0.08em", color: "#10b981", marginBottom:"12px" }}>
-            🛡️ ACTIVE PROCTOR SHIELD STATUS
+            ðŸ›¡ï¸ ACTIVE PROCTOR SHIELD STATUS
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
             {[
@@ -644,7 +644,7 @@ export default function Interview() {
               { label:"Zero-Trust Proctor: Automated webcam & microphone monitor", ok: ztaEnabled },
             ].map((item, i) => (
               <div key={i} style={{ display:"flex", alignItems:"center", gap:"10px", fontSize:"13px", color: item.ok ? "#34d399" : "#f87171", fontWeight: 600 }}>
-                <span>{item.ok ? "✓" : "✕"}</span> {item.label}
+                <span>{item.ok ? "âœ“" : "âœ•"}</span> {item.label}
               </div>
             ))}
           </div>
@@ -656,26 +656,26 @@ export default function Interview() {
             Assessment Guidelines
           </div>
           {[
-            "🎥 Web camera feed must remain active and fully visible at all times",
-            "⏱️ Each question has an independent countdown timer",
-            "🔒 Do not navigate away, minimize window, or open new browser tabs",
-            "📋 Ensure a quiet testing environment with no background speech",
+            "ðŸŽ¥ Web camera feed must remain active and fully visible at all times",
+            "â±ï¸ Each question has an independent countdown timer",
+            "ðŸ”’ Do not navigate away, minimize window, or open new browser tabs",
+            "ðŸ“‹ Ensure a quiet testing environment with no background speech",
           ].map((r, i) => (
             <div key={i} style={{ fontSize:"13px", color:"#cbd5e1", marginBottom:"8px", display:"flex", alignItems:"baseline", gap:"8px", lineHeight: 1.5 }}>
-              <span style={{ fontSize: "11px" }}>•</span>
+              <span style={{ fontSize: "11px" }}>â€¢</span>
               <span>{r}</span>
             </div>
           ))}
         </div>
 
         <button onClick={handleBeginAssessment} className="glow-btn" style={{ width:"100%", padding:"15px", fontSize:"15.5px" }}>
-          🚀 Begin Assessment
+          ðŸš€ Begin Assessment
         </button>
       </div>
     </div>
   );
 
-  // ── QUESTION SCREEN ────────────────────────────────────────────────────────
+  // â”€â”€ QUESTION SCREEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (phase === "question" || phase === "submitting") return (
     <div style={{ minHeight:"100vh", background:"#06060f", display:"flex", flexDirection:"column", fontFamily:"var(--font-body)", position:"relative" }}>
       
@@ -694,11 +694,11 @@ export default function Interview() {
             onMouseEnter={e => e.currentTarget.style.borderColor = "#7c3aed"}
             onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"}
           >
-            ←
+            â†
           </button>
           <div>
             <div style={{ fontSize:"14px", fontWeight:800, color:"#f0f0ff", fontFamily:"var(--font-headings)" }}>
-              {companyName || "RVCE Placement"} — {jobRole}
+              {companyName || "RVCE Placement"} â€” {jobRole}
             </div>
             <div style={{ fontSize:"11px", color:"#6b6b90", marginTop: "2px" }}>
               Question {currentIdx + 1} of {questions.length}
@@ -709,7 +709,7 @@ export default function Interview() {
         <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
           {uniquenessEnforced && (
             <span style={{ fontSize:"9.5px", background:"rgba(124,58,237,0.1)", border:"1px solid rgba(139,92,246,0.25)", color:"#a78bfa", padding:"4px 10px", borderRadius:"12px", fontWeight:800, fontFamily: "var(--font-headings)" }}>
-              🔒 L14 UNIQUE QUESTION
+              ðŸ”’ L14 UNIQUE QUESTION
             </span>
           )}
           <ZTABadge compact page="Interview" />
@@ -748,7 +748,7 @@ export default function Interview() {
             </span>
             {phase === "submitting" && (
               <span style={{ padding:"4px 12px", borderRadius:"20px", fontSize:"10.5px", fontWeight:800, background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.25)", color:"#fbbf24", animation: "pulse 1.5s infinite" }}>
-                ⏳ AI Scoring in progress...
+                â³ AI Scoring in progress...
               </span>
             )}
           </div>
@@ -776,11 +776,11 @@ export default function Interview() {
               onMouseEnter={e => { if(!speaking) e.currentTarget.style.borderColor = "#7c3aed"; }}
               onMouseLeave={e => { if(!speaking) e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
             >
-              {speaking ? "🔊 Speaking..." : "🔊 Read question out loud"}
+              {speaking ? "ðŸ”Š Speaking..." : "ðŸ”Š Read question out loud"}
             </button>
           </div>
 
-          {/* Circular countdown ring — replaces flat TimerBar */}
+          {/* Circular countdown ring â€” replaces flat TimerBar */}
           <CountdownRing
             timeLimit={q?.timeLimit || 120}
             onTimeout={handleTimeout}
@@ -795,8 +795,8 @@ export default function Interview() {
           {/* Answer Input Toggles */}
           <div style={{ display:"flex", gap:"10px", marginTop: "10px" }}>
             {[
-              { id:"type", label:"⌨️ Type Code / Text Answer" },
-              { id:"voice", label:"🎙️ Speak Answer" }
+              { id:"type", label:"âŒ¨ï¸ Type Code / Text Answer" },
+              { id:"voice", label:"ðŸŽ™ï¸ Speak Answer" }
             ].map(mode => (
               <button
                 key={mode.id}
@@ -840,7 +840,7 @@ export default function Interview() {
               {/* ZTA VAD Auto-submit toggle */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                 <div>
-                  <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#f0f0ff" }}>🤖 Voice-Activity Detection (VAD)</div>
+                  <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#f0f0ff" }}>ðŸ¤– Voice-Activity Detection (VAD)</div>
                   <div style={{ fontSize: "10px", color: "#6b6b90", marginTop: "2px" }}>Auto-submit your speech answer after 2.5s of silence.</div>
                 </div>
                 <label style={{ display: "inline-flex", alignItems: "center", cursor: "pointer", position: "relative" }}>
@@ -870,12 +870,12 @@ export default function Interview() {
               {recording ? (
                 <div style={{ display:"flex", alignItems:"center", gap:"12px", marginBottom:"16px" }}>
                   <div style={{ width:"10px", height:"10px", borderRadius:"50%", background:"#ef4444", boxShadow: "0 0 10px #ef4444", animation:"ztaPulse 1s infinite" }} />
-                  <span style={{ color:"#ef4444", fontSize:"13.5px", fontWeight:700 }}>LIVE RECORDING ACTIVE — SPEAK NOW</span>
+                  <span style={{ color:"#ef4444", fontSize:"13.5px", fontWeight:700 }}>LIVE RECORDING ACTIVE â€” SPEAK NOW</span>
                 </div>
               ) : (
                 <div style={{ display:"flex", gap:"10px", marginBottom:"16px" }}>
                   <button onClick={startVoiceRecording} className="glow-btn" style={{ padding:"10px 20px", fontSize:"13px" }}>
-                    🎙️ Turn Microphone On
+                    ðŸŽ™ï¸ Turn Microphone On
                   </button>
                 </div>
               )}
@@ -884,7 +884,7 @@ export default function Interview() {
                   onClick={stopVoice}
                   style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.25)", color:"#f87171", padding:"10px 20px", borderRadius:"12px", cursor:"pointer", fontSize:"13px", fontWeight:700, marginBottom:"16px" }}
                 >
-                  ⏹ Stop Speaking
+                  â¹ Stop Speaking
                 </button>
               )}
               {transcript && (
@@ -911,7 +911,7 @@ export default function Interview() {
           >
             {phase === "submitting"
               ? "Evaluating Answer with L13 Fact Checker..."
-              : currentIdx + 1 === questions.length ? "🏁 Submit Final Evaluation Report" : "Submit Answer & Proceed →"}
+              : currentIdx + 1 === questions.length ? "ðŸ Submit Final Evaluation Report" : "Submit Answer & Proceed â†’"}
           </button>
         </div>
 
@@ -928,7 +928,7 @@ export default function Interview() {
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ fontSize: "15px", fontWeight: 800, color: "#fff", margin: 0, display: "flex", alignItems: "center", gap: "8px", fontFamily: "var(--font-headings)" }}>
-                💻 Interactive Coding Sandbox
+                ðŸ’» Interactive Coding Sandbox
               </h3>
               
               {/* Language Selector */}
@@ -1019,7 +1019,7 @@ export default function Interview() {
                     boxShadow: "0 2px 8px rgba(16, 185, 129, 0.25)"
                   }}
                 >
-                  {runningTests ? "Compiling..." : "▶ Run Code"}
+                  {runningTests ? "Compiling..." : "â–¶ Run Code"}
                 </button>
               </div>
               <pre style={{
@@ -1115,7 +1115,7 @@ export default function Interview() {
     </div>
   );
 
-  // ── PROCTOR BLOCKED SCREEN ──────────────────────────────────────────────────
+  // â”€â”€ PROCTOR BLOCKED SCREEN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (phase === "proctor_blocked" || proctorViolated) return (
     <div style={{ minHeight:"100vh", background:"#09050d", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", padding:"40px", position:"relative", overflow: "hidden", fontFamily: "var(--font-body)" }}>
       {/* Intense red radial glows */}
@@ -1123,7 +1123,7 @@ export default function Interview() {
       <div style={{ position: "absolute", width: "600px", height: "600px", background: "rgba(239, 68, 68, 0.05)", borderRadius: "50%", filter: "blur(120px)", pointerEvents: "none" }} />
       
       <div style={{ textAlign:"center", maxWidth: "560px", zIndex: 1 }} className="fade-in-up">
-        <div style={{ fontSize:"72px", marginBottom:"24px", animation: "pulse 1.5s infinite" }}>🚨</div>
+        <div style={{ fontSize:"72px", marginBottom:"24px", animation: "pulse 1.5s infinite" }}>ðŸš¨</div>
         <h1 style={{ fontSize:"30px", fontWeight:900, color:"#ef4444", fontFamily:"var(--font-headings)", marginBottom:"12px", letterSpacing: "-0.02em" }}>
           ASSESSMENT TERMINATED
         </h1>
@@ -1156,12 +1156,12 @@ export default function Interview() {
     </div>
   );
 
-  // ── DONE / SUBMITTING FINAL ───────────────────────────────────────────────
+  // â”€â”€ DONE / SUBMITTING FINAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div style={{ minHeight:"100vh", background:"#06060f", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"var(--font-body)", position:"relative" }}>
       <div style={{ position: "absolute", width: "300px", height: "300px", background: "rgba(6, 182, 212, 0.05)", borderRadius: "50%", filter: "blur(100px)", pointerEvents: "none" }} />
       <div style={{ textAlign:"center", zIndex: 1 }}>
-        <div style={{ fontSize:"56px", marginBottom:"20px", animation: "spin 4s linear infinite" }}>🔄</div>
+        <div style={{ fontSize:"56px", marginBottom:"20px", animation: "spin 4s linear infinite" }}>ðŸ”„</div>
         <h1 style={{ fontSize:"24px", fontWeight:900, color:"#f0f0ff", fontFamily:"var(--font-headings)" }}>Compiling Graded Report...</h1>
         <p style={{ color:"#6b6b90", fontSize:"13.5px", marginTop:"8px" }}>ZTA-L13 Fact Verification engine is scoring your final answers</p>
       </div>

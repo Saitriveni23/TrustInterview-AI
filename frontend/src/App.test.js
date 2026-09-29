@@ -1,8 +1,14 @@
-import { render, screen } from '@testing-library/react';
-import App from './App';
+import { render, screen } from "@testing-library/react";
+import App from "./App";
 
-test('renders learn react link', () => {
+jest.mock("./firebase", () => ({ auth: { currentUser: null }, googleProvider: {} }));
+jest.mock("./AuthContext", () => ({
+  useAuth: () => ({ loading: false, profile: null, login: jest.fn(), logout: jest.fn(), error: "" }),
+}));
+
+test("renders the Firebase-backed RVCE candidate login", () => {
+  window.history.pushState({}, "", "/login");
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /rvce candidate access/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
 });
